@@ -1,0 +1,5 @@
+# Generated output. index.html is produced by tools/generate.py from the other
+# repositories, so committing it would create a second copy that can disagree
+# with the projects it describes -- the exact drift this design avoids.
+/site/
+__pycache__/

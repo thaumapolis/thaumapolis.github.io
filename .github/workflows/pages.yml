@@ -1,0 +1,60 @@
+# Publishes the org front page at https://thaumapolis.github.io/
+#
+# Token policy, since this is the part that tends to leak: every credential here
+# is GitHub's own per-run GITHUB_TOKEN, scoped by the `permissions` block below.
+# Nothing reads or embeds a personal access token, and no token value is written
+# into any file, commit or log line.
+name: pages
+
+on:
+  # Scheduled as well as on push, because the page's inputs live in other
+  # repositories: a project can change its README without touching this repo, and
+  # the front page should follow within a day rather than at the next manual edit.
+  schedule:
+    - cron: "17 4 * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # pages:write plus id-token:write is what actions/deploy-pages needs. The
+  # environment name and url below are what make the deployed URL visible on the
+  # run page.
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The front page is derived from the projects rather than stored here. Each
+      # is fetched shallow at its default branch: the generator reads only README
+      # files, so history would be dead weight.
+      - name: Clone every advertised project
+        run: |
+          set -euo pipefail
+          mkdir -p projects
+          for repo in ridgeline flux-pond aurelia stem quantum-loom resonance-engine nebulabrot termbrot; do
+            branch=$(git ls-remote --symref "https://github.com/thaumapolis/${repo}.git" HEAD | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2}')
+            git clone --depth 1 --branch "${branch}" "https://github.com/thaumapolis/${repo}.git" "projects/${repo}"
+            echo "${branch}" > "projects/${repo}/.default_branch"
+          done
+
+      # Fails the build when a project is missing, a README has lost its title or
+      # description, or an advertised preview link stops serving HTML. The outcome
+      # worth preventing is a green deploy of a page with a dead Open-it link.
+      - name: Generate the front page
+        run: python3 tools/generate.py --repos projects --out site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
