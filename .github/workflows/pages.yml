@@ -33,16 +33,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The front page is derived from the projects rather than stored here. Each
-      # is fetched shallow at its default branch: the generator reads only README
-      # files, so history would be dead weight.
+      # The front page is derived from the projects rather than stored here.
+      #
+      # fetch-depth: 0 is load-bearing, not thoroughness. The page is ordered by
+      # each project's first commit, which is read from the clone. A shallow clone
+      # reports one commit and a single date, so every project would look a day
+      # old and the chronology would collapse into a tie -- and it would still
+      # publish, because nothing else notices. tools/generate.py now fails the
+      # build on a shallow clone for exactly that reason.
       - name: Clone every advertised project
         run: |
           set -euo pipefail
           mkdir -p projects
+          # Unordered. Order is not a workflow concern: the generator sorts by each
+          # project's own first commit, so keeping this list in some other order
+          # would be a second, competing idea about what the page looks like.
           for repo in ridgeline flux-pond aurelia stem quantum-loom resonance-engine nebulabrot termbrot; do
             branch=$(git ls-remote --symref "https://github.com/thaumapolis/${repo}.git" HEAD | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2}')
-            git clone --depth 1 --branch "${branch}" "https://github.com/thaumapolis/${repo}.git" "projects/${repo}"
+            git clone --fetch-depth 0 --branch "${branch}" "https://github.com/thaumapolis/${repo}.git" "projects/${repo}"
             echo "${branch}" > "projects/${repo}/.default_branch"
           done
 
