@@ -35,12 +35,18 @@ jobs:
 
       # The front page is derived from the projects rather than stored here.
       #
-      # fetch-depth: 0 is load-bearing, not thoroughness. The page is ordered by
-      # each project's first commit, which is read from the clone. A shallow clone
-      # reports one commit and a single date, so every project would look a day
+      # These clones must be complete, which here means simply not passing
+      # --depth: the page is ordered by each project's first commit, and a shallow
+      # clone reports one commit and one date, so every project would look a day
       # old and the chronology would collapse into a tie -- and it would still
       # publish, because nothing else notices. tools/generate.py now fails the
       # build on a shallow clone for exactly that reason.
+      #
+      # Do not "fix" this with --depth infinite or --fetch-depth 0. The latter is
+      # an actions/checkout input, not a git flag, and the former made this job die
+      # with exit 129 and a wall of git usage text: git itself rejects
+      # "depth infinite is not a positive number". Omitting --depth is the only
+      # spelling that is both correct and portable across git versions.
       - name: Clone every advertised project
         run: |
           set -euo pipefail
@@ -50,7 +56,7 @@ jobs:
           # would be a second, competing idea about what the page looks like.
           for repo in ridgeline flux-pond aurelia stem quantum-loom resonance-engine nebulabrot termbrot; do
             branch=$(git ls-remote --symref "https://github.com/thaumapolis/${repo}.git" HEAD | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2}')
-            git clone --fetch-depth 0 --branch "${branch}" "https://github.com/thaumapolis/${repo}.git" "projects/${repo}"
+            git clone --branch "${branch}" "https://github.com/thaumapolis/${repo}.git" "projects/${repo}"
             echo "${branch}" > "projects/${repo}/.default_branch"
           done
 

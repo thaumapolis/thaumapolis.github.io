@@ -220,7 +220,8 @@ def git_history(checkout: Path) -> tuple[date | None, date | None, int]:
 
     Requires the full history. A shallow clone reports one commit and would date
     every project to a single day, flattening the chronology into a tie; hence
-    `fetch-depth: 0` in the workflow, asserted by _require_full_history below.
+    the workflow's clones must therefore omit `--depth`, asserted by
+    _require_full_history below.
     """
     first_commit = _first_commit(checkout)
     oldest = _date_of(checkout, first_commit)
@@ -888,7 +889,7 @@ def _require_full_history(projects: list[Project]) -> None:
             "shallow or unreadable clone(s): "
             + ", ".join(thin)
             + " -- the page is ordered by first commit, so a --depth 1 clone\n"
-            "would date every project to a single day. Clone with fetch-depth: 0."
+            "would date every project to a single day. Clone without --depth."
         )
         raise SystemExit(msg)
 

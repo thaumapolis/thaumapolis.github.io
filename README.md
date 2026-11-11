@@ -22,7 +22,7 @@ The build **fails loudly** rather than publishing something plausible with a hol
 
 Order comes from each project's first commit, read from its clone. The GitHub API's `created_at` is not used: it is repo creation, not when the work started, and it disagrees with the first commit on several projects — enough to reorder the page, which it does to `nebulabrot`.
 
-This makes full history load-bearing, and the workflow clones with `fetch-depth: 0` as a result. A shallow clone reports one commit and one date, so every project looks a day old and the chronology silently becomes a tie — and the page still publishes, because nothing else notices. `tools/generate.py` therefore refuses to build against a shallow clone. Verified against real one-commit clones, which it rejects with a message naming the repos and the fix.
+This makes full history load-bearing, so the workflow clones without `--depth`. A shallow clone reports one commit and one date, so every project looks a day old and the chronology silently becomes a tie — and the page still publishes, because nothing else notices. `tools/generate.py` therefore refuses to build against a shallow clone. Verified against real one-commit clones, which it rejects with a message naming the repos and the fix.
 
 `ORDER` used to be a hand-maintained list that fixed the display order. It is now `REPOS`, which says only what must exist; position follows from the history.
 
