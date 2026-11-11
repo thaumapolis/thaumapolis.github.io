@@ -4,11 +4,15 @@ Source of the organisation front page at **<https://thaumapolis.github.io/>**.
 
 An organisation's root Pages site publishes from a repository named exactly `<org>.github.io` — here `thaumapolis.github.io`. This repo was created as `.github` instead, on the mistaken belief that the name also selects the front page. It does not: `.github` is the special repository for community health content, and as a Pages source it publishes to `thaumapolis.github.io/.github/` — a project site, not the root. Renaming the repository moved it to the root; no workflow or generator change was needed. The forfeit is the `.github` role, since the two names are mutually exclusive.
 
-What gets published is generated, so this repo holds a generator rather than a gallery: **no project description, screenshot or URL is written down here.**
+What gets published is generated, so this repo holds a generator rather than a gallery: **no project description or URL is written down here**, and the only pictures are cut from screenshots each project nominates for itself.
 
 ## What the page is
 
-A list of the organisation's projects in the order they were started, oldest first, each with the date range its commits span, its commit count, and a link to open it. The thumbnails are generated inline SVG in each project's colour, drawn from what the project is — a waterline for the pond, pipes for the organ, a ridge for the tower — rather than screenshots, so nothing here is a frozen picture of a thing that moves, and nothing needs to be committed and kept current.
+A list of the organisation's projects in the order they were started, oldest first, each with the date range its commits span, its commit count, and a link to open it.
+
+Each card shows the project's own screenshot where it has one, and a generated SVG motif where it does not. The motif is drawn in the project's colour from what the project is — a waterline for the pond, pipes for the organ, a ridge for the tower — so a card with no screenshot still reads as a thing rather than an empty box. Three of the eight cards use a motif: two projects publish no image at all, and a third whose README shows only dark, sparse frames is better served by a motif than by a black rectangle.
+
+A screenshot is a freeze of something that moves, so the choice matters, and it is not this repo's to make. See [Card images](#card-images).
 
 ## How it works
 
@@ -46,13 +50,35 @@ The goldens exist because the generator's own assertions were not enough. Those 
 
 Baselines live per engine (`tests/golden/firefox/`) with no cross-engine fallback. **Firefox is the only engine that starts in this container**; Chromium and WebKit fail to launch. `--update` rewrites baselines and prints them for review — nothing here should accept a baseline that nobody has looked at.
 
+## Card images
+
+A project nominates the picture its card shows with one inert line in its README:
+
+```markdown
+<!-- Front page image: docs/images/artifact.png -->
+```
+
+The path is relative to the project's own root. It is an HTML comment because the line has to be invisible to someone reading the README and still machine-readable here; `tools/generate.py` owns the pattern and `tools/make_thumbs.py` imports it, so there is one definition of the convention rather than two that can disagree.
+
+The declared file must also be embedded in that README as a markdown image. That rule is the whole reason the cards can be trusted: the declaration then points at a picture the project already shows its own readers, rather than at any file in the tree. It replaced a heuristic that took the first image in the README, which failed twice in ways that only showed up after looking at the rendered page — it put a near-empty mid-bow frame on Aurelia's card, and it silently demoted Ridgeline, whose README links no images at all despite having committed golden frames. Choosing from the filesystem is a guess; a file the README shows is a statement.
+
+Thumbnails are cut to 560x280 WebP and committed to `thumbs/`. They are committed rather than fetched at build time so the published page remains one file with no external requests, and so building it needs no imaging library. Regenerate deliberately:
+
+```console
+$ nix develop --command ./tools/make_thumbs.py --repos ..
+```
+
+A declared file that is missing, not embedded, absurdly large, or given as a URL fails the build. It does not fall back to the previous thumbnail, because a card quietly showing a stale frame is how an index starts lying. Sources are never upscaled, and the size budget is asserted rather than hoped for.
+
+The framing override in `tools/make_thumbs.py` (`FRAMING`) exists for sources a centre crop reads badly on, and each entry carries its reason. It is deliberately not a smart crop: with three exceptions in eight projects, per-project judgement with a stated reason is less machinery and more honest than an algorithm that decides silently.
+
 ## Adding a project
 
 Append its repository name to `REPOS` in `tools/generate.py` and to the clone loop in `.github/workflows/pages.yml`. These lists are deliberately separate rather than shared: the workflow list controls what gets cloned, the script list controls what must exist, and the script failing on a missing repo is the check that catches the two lists drifting apart. Position on the page needs no edit — it comes from the project's own history.
 
 A project needs a `# Title` line and a descriptive first paragraph in its README. A browser preview must be advertised as a `raw.githack.com/.../index.html` URL, and is fetched at build time to confirm it serves. Projects without a browser artifact — the CLI tools — are listed with a Source link and no preview, which is stated rather than hidden.
 
-To give a new project a colour and a thumbnail motif, add entries to `ACCENTS` and `_KIND`. An unlisted project still renders, with a neutral colour and a generic wave: a missing label degrades the page, it does not break the build.
+To give a new project a colour and a motif, add entries to `ACCENTS` and `_KIND`; to give it a screenshot instead, add the `Front page image:` line described under [Card images](#card-images). An unlisted project still renders, with a neutral colour and a generic wave: a missing label degrades the page, it does not break the build.
 
 ## Deploying
 
