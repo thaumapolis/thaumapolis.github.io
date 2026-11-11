@@ -1,8 +1,10 @@
-# thaumapolis/.github
+# thaumapolis.github.io
 
 Source of the organisation front page at **<https://thaumapolis.github.io/>**.
 
-GitHub publishes a profile page for an organisation from a repository named `.github`, which is why this one has that name. What it publishes is generated, so this repo holds a generator rather than a gallery: **no project description, screenshot or URL is written down here.**
+An organisation's root Pages site is published from a repository named exactly `<org>.github.io` — here `thaumapolis.github.io`. This repo was created as `.github` instead, on the mistaken belief that the name also selects the org front page. It does not: `.github` is the special repository for community health content (issue and pull request templates, the org profile README), and as a Pages source it publishes to `thaumapolis.github.io/.github/` — a project site, not the root. Renaming the repository to `thaumapolis.github.io` moved it to the root; no workflow or generator change was needed. The forfeit is the `.github` role: those two names are mutually exclusive, so community health templates need a separate `.github` repo if they are wanted later.
+
+What gets published is generated, so this repo holds a generator rather than a gallery: **no project description, screenshot or URL is written down here.**
 
 ## How it works
 
