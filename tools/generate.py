@@ -155,6 +155,12 @@ def parse_readme(readme: str) -> tuple[str, str, str | None]:
         paragraph = " ".join(paragraph.split())
         if not paragraph or paragraph.startswith(">"):
             continue
+        # A project nominates its card image with an HTML comment (see
+        # FRONT_PAGE_IMAGE_RE). Rendered, a comment is invisible; the paragraph
+        # loop works on source text, so the nomination would otherwise become
+        # the card's description. It is skipped, not skipped-and-shown.
+        if FRONT_PAGE_IMAGE_RE.search(paragraph):
+            continue
         # Judge the rendered text. A "Play it now" call to action arrives as
         # `**▶ [Play it now](url)**`, which looks like prose until it is stripped.
         core = _strip_markdown(paragraph)
@@ -479,7 +485,12 @@ def render(projects: list[Project]) -> str:
     :is(.card:first-child, .card.solo) .thumb {{
       flex: 0 0 42%; width: auto; min-height: 0;
       border-bottom: none; border-right: 1px solid var(--rule);
+      /* The opener's panel is the narrowest on the page -- 42% of the card,
+         and the tallest -- so cover crops a 2:1 source down to roughly 1:1.
+         contain keeps the whole frame instead; the letterbox bars read as a
+         matted print, which is the right look for a full-bleed render. */
     }}
+    :is(.card:first-child, .card.solo) .thumb img {{ object-fit: contain; }}
   }}
   .thumb {{
     display: block; width: 100%; min-height: 132px;
@@ -491,7 +502,11 @@ def render(projects: list[Project]) -> str:
        settled on, which is why the SVG scales with the box instead of keeping
        its own 320x180 shape. */
   }}
-  .thumb svg {{ display: block; width: 100%; height: 100%; }}
+  .thumb svg, .thumb img {{ display: block; width: 100%; height: 100%; }}
+  /* The screenshots are the projects' own pixels, so they are shown as they
+     are rather than recoloured to sit on the dark theme. object-fit: cover
+     crops the aspect mismatch instead of distorting it. */
+  .thumb img {{ object-fit: cover; }}
   .body {{ padding: 1.15rem 1.3rem 1.35rem; display: flex; flex-direction: column; flex: 1; }}
   .card h2 {{
     margin: 0; font-size: 1.3rem; font-weight: 700; letter-spacing: -.01em;
@@ -609,6 +624,20 @@ _PAGE_TEXT += (
 _USED_CODEPOINTS = {ord(c) for c in _PAGE_TEXT}
 
 _FACES_DIR = Path(__file__).resolve().parent.parent / "faces"
+# Committed card images, produced by tools/make_thumbs.py. Absent for a
+# project with no README image, which is what makes the motif a fallback
+# rather than a separate code path someone has to keep in sync.
+_THUMBS_DIR = Path(__file__).resolve().parent.parent / "thumbs"
+# How a project nominates the image its card shows: a line of the form
+#   <!-- Front page image: path/relative/to/the/repo/root.png -->
+# An HTML comment because it must be inert where it lives -- it sits in the
+# project's own README, where it should not render as prose -- and still
+# machine-readable here. Defined once and imported by tools/make_thumbs.py:
+# two copies of a convention are two ways to disagree about it.
+FRONT_PAGE_IMAGE_RE = re.compile(
+    r"^\s*<!--[ \t]*front page image:[ \t]*(\S+?)[ \t]*-->$",
+    re.IGNORECASE | re.MULTILINE,
+)
 _FACES = [
     (400, "ThaumapolisSans-regular.woff2.base64"),
     (700, "ThaumapolisSans-bold.woff2.base64"),
@@ -846,15 +875,44 @@ def _motif_art(shape: str, accent: str) -> str:
 
 
 def _thumb(p: Project) -> str:
-    """Inline SVG art in the project's accent colour.
+    """The card image: the project's own screenshot if it has one, else a motif.
 
-    Generated rather than screenshotted deliberately: a screenshot would have to
-    be committed here -- the duplicate-copy problem this repo exists to avoid --
-    and would freeze one moment of a thing that moves. These cost nothing, scale
-    to any width, and cannot 404.
+    The screenshots are committed to this repository (see tools/make_thumbs.py)
+    rather than fetched, so the page stays a single file with no external
+    requests and no runtime dependency on an imaging library.
+
+    alt text is empty on purpose in both branches. Every card already states the
+    project's name and what kind of thing it is, so the image is decorative
+    either way -- a screenshot is decorative here, not informative, because its
+    content is on display right next to the card and the page cannot be used
+    without reading that text anyway.
     """
-    accent = ACCENTS.get(p.repo, NO_ACCENT)
-    return _motif(_KIND.get(p.repo, ("Project", "lines"))[1], accent)
+    path = _THUMBS_DIR / f"{p.repo}.webp"
+    if path.is_file():
+        encoded = base64.b64encode(path.read_bytes()).decode()
+        return (
+            '<img class="shot" alt="" aria-hidden="true" '
+            f'src="data:image/webp;base64,{encoded}">'
+        )
+    return _motif(
+        _KIND.get(p.repo, ("Project", "lines"))[1], ACCENTS.get(p.repo, NO_ACCENT)
+    )
+
+
+def _fallback(p: Project, kind: str) -> str:
+    """Say what to do instead, when a project has no page to open.
+
+    Wording derived from the card's own kind label rather than from the repo
+    name. The previous text -- "no browser artifact" -- was true and still
+    unhelpful: it appears in the slot where every other card has a call to
+    action, so a visitor reads a dead end where there is only a different door.
+    A CLI's door is the source, and the card should say so.
+    """
+    note = {
+        "Renderer": "it writes an image rather than a page",
+        "CLI tool": "it runs in a terminal rather than a browser",
+    }.get(kind, "there is nothing to open here")
+    return f'<span class="none">command line &#8212; {note}</span>'
 
 
 def _card(p: Project, spans_row: bool) -> str:
@@ -869,10 +927,7 @@ def _card(p: Project, spans_row: bool) -> str:
     else:
         # Honest about what is missing rather than offering a link that does
         # nothing: these two are a renderer and a CLI, so there is no page to open.
-        links = (
-            f'<a class="source" href="{repo_url}">Source</a>'
-            '<span class="none">no browser artifact</span>'
-        )
+        links = f'<a class="source" href="{repo_url}">Source</a>{_fallback(p, kind)}'
     commits = "1 commit" if p.commits == 1 else f"{p.commits} commits"
     # --accent is inline because it is data about the project, not a state: the
     # heading, buttons and hover border all read that one property. Only the
