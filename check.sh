@@ -64,6 +64,17 @@ else
   "$RUFF" format --check tools/ || fail "ruff format"
 fi
 
+# Card images. Deliberately a build-time step whose absence is visible: the
+# generator embeds whatever is committed in thumbs/, so an unregenerated thumb
+# means a card still shows a screenshot the project no longer nominates. Running
+# the tool is how that drift is caught -- it fails on a declared file that is
+# missing or not embedded, and rewrites what should be byte-identical when
+# nothing has changed.
+report "card thumbnails"
+if ! "$PYTHON" tools/make_thumbs.py --repos "$REPOS"; then
+  fail "make_thumbs (a declared front page image is missing, not embedded, or over budget)"
+fi
+
 # The build itself. This is also the phase that proves the ordering claim: it
 # prints each project's first commit, which comes from the clones, and fails on
 # a shallow one rather than publishing a page where everything looks days old.
