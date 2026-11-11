@@ -39,6 +39,9 @@ const TOLERANCE_RATIO = 0.001;
 /** What the page must contain, derived from the repos it advertises. */
 const EXPECTED_CARDS = 8;
 const EXPECTED_OPEN_LINKS = 6;
+/** Full-width cards when the grid has more than one column: the opener, and the
+ *  last card when it would otherwise sit alone in a row. */
+const EXPECTED_FULL_WIDTH_CARDS = 2;
 
 /** The three shapes the page is designed against. Both phone orientations
  *  matter: the grid changes column count between them. */
@@ -182,7 +185,33 @@ const PAGE_HEALTH = `(() => {
     clipped,
     cards: document.querySelectorAll('.card').length,
     opens: [...document.querySelectorAll('a.open')].map((a) => a.href),
-    wide: document.querySelectorAll('.card.wide').length,
+    // Measured from layout, not from a class name, which can claim a span
+    // falsely. Columns are inferred from the row the cards actually sit on, so
+    // the same expectation reads correctly at every width: a single-column phone
+    // grid legitimately has every card spanning, and a two-column desktop must
+    // have exactly the wide ones doing it.
+    columns: (() => {
+      const cards = [...document.querySelectorAll('.card')];
+      if (cards.length === 0) return 0;
+      // Group into rows by top edge, then report the widest row. Reading only
+      // the first row was the bug: it is the full-width opener, so the count
+      // came back 1 on a desktop that clearly has two columns, and the
+      // assertion built on it could never have failed.
+      const rows = new Map();
+      for (const card of cards) {
+        const box = card.getBoundingClientRect();
+        // 2px tolerance for sub-pixel layout differences within a row.
+        const key = Math.round(box.top / 2) * 2;
+        const found = [...rows.keys()].find((k) => Math.abs(k - key) < 2);
+        const bucket = found === undefined ? [] : rows.get(found);
+        bucket.push(Math.round(box.left));
+        rows.set(found === undefined ? key : found, bucket);
+      }
+      return Math.max(...[...rows.values()].map((lefts) => new Set(lefts).size));
+    })(),
+    fullWidth: [...document.querySelectorAll('.card')].filter(
+      (c) => c.closest('ol').getBoundingClientRect().width - c.getBoundingClientRect().width < 2,
+    ).length,
     font,
   };
 })()`;
@@ -225,7 +254,14 @@ async function main() {
       if (health.opens.length !== EXPECTED_OPEN_LINKS) {
         problems.push(`expected ${EXPECTED_OPEN_LINKS} "Open it" links, rendered ${health.opens.length}`);
       }
-      if (health.wide !== 2) problems.push(`expected 2 full-width cards, rendered ${health.wide}`);
+      if (health.columns < 1) problems.push(`grid rendered no columns`);
+      // In one column every card spans, so there is nothing to assert beyond
+      // there being columns; in more, exactly the wide ones may span.
+      if (health.columns > 1 && health.fullWidth !== EXPECTED_FULL_WIDTH_CARDS) {
+        problems.push(
+          `expected ${EXPECTED_FULL_WIDTH_CARDS} full-width cards in a ${health.columns}-column grid, measured ${health.fullWidth}`,
+        );
+      }
       if (!health.font.includes('Thaumapolis Sans')) {
         problems.push(`body font is "${health.font}"; the embedded face is not in use`);
       }

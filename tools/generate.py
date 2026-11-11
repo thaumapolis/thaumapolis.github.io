@@ -379,7 +379,7 @@ def render(projects: list[Project]) -> str:
     spans = {0} if projects else set()
     if last and (len(projects) - 1) % 2 == 1:
         spans.add(last)
-    cards = "\n".join(_card(p, wide=i in spans) for i, p in enumerate(projects))
+    cards = "\n".join(_card(p, spans_row=i in spans) for i, p in enumerate(projects))
     oldest = min(p.first_commit for p in projects if p.first_commit is not None)
     newest = max(p.last_commit for p in projects if p.last_commit is not None)
     openable = sum(1 for p in projects if p.preview is not None)
@@ -467,13 +467,16 @@ def render(projects: list[Project]) -> str:
     /* The opener spans the row: it is the oldest project, so the page starts at
        where the work started, and the grid gets an anchor instead of eight
        identical tiles. */
-    .card.wide {{ grid-column: 1 / -1; }}
+    /* The opener is the first child, so that selector is structural rather than
+       a class the markup has to remember to add. The last card carries .solo
+       when the arithmetic leaves it alone in a row. */
+    :is(.card:first-child, .card.solo) {{ grid-column: 1 / -1; }}
     /* Wide cards go horizontal: art beside copy, not stacked above it. Stacking
        one made the first thumbnail about 40% of the viewport, pushing the
        sentence that explains the project below the fold -- a banner for a card
        nobody has read yet. */
-    .card.wide {{ flex-direction: row; align-items: center; }}
-    .card.wide .thumb {{
+    :is(.card:first-child, .card.solo) {{ flex-direction: row; align-items: center; }}
+    :is(.card:first-child, .card.solo) .thumb {{
       flex: 0 0 42%; width: auto; min-height: 0;
       border-bottom: none; border-right: 1px solid var(--rule);
     }}
@@ -524,6 +527,14 @@ def render(projects: list[Project]) -> str:
     color: var(--ink-soft); border: 1px solid var(--edge);
   }}
   .links .source:hover {{ color: var(--ink); border-color: var(--ink-faint); }}
+  /* A dark theme with only the browser default outline gives a keyboard user
+     almost nothing to see. :focus-visible rather than :focus so a mouse click
+     does not paint a ring nobody asked for. */
+  .links a:focus-visible {{
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 8px;
+  }}
   .links .none {{
     font-size: .85rem; color: var(--ink-faint); align-self: center;
   }}
@@ -677,8 +688,11 @@ def _motif(shape: str, accent: str) -> str:
     """
     ink = _MOTIF_INK.get(shape, accent)
     return (
-        f'<svg viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice" role="img" '
-        f'aria-hidden="true"><rect width="320" height="180" fill="{THUMB_BG}"/>'
+        # Decorative: the card already states the project name and its kind, so
+        # the art repeating that would be noise. aria-hidden is the right call --
+        # and it cannot be combined with role="img", which is what was there.
+        f'<svg viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice" aria-hidden="true">'
+        f'<rect width="320" height="180" fill="{THUMB_BG}"/>'
         f"{_motif_art(shape, ink)}</svg>"
     )
 
@@ -843,7 +857,7 @@ def _thumb(p: Project) -> str:
     return _motif(_KIND.get(p.repo, ("Project", "lines"))[1], accent)
 
 
-def _card(p: Project, wide: bool) -> str:
+def _card(p: Project, spans_row: bool) -> str:
     repo_url = f"https://github.com/{ORG}/{p.repo}"
     accent = ACCENTS.get(p.repo, NO_ACCENT)
     kind = _KIND.get(p.repo, ("Project", "waves"))[0]
@@ -860,7 +874,10 @@ def _card(p: Project, wide: bool) -> str:
             '<span class="none">no browser artifact</span>'
         )
     commits = "1 commit" if p.commits == 1 else f"{p.commits} commits"
-    classes = "card wide" if wide else "card"
+    # --accent is inline because it is data about the project, not a state: the
+    # heading, buttons and hover border all read that one property. Only the
+    # dangling last card needs a class; the opener is identified by position.
+    classes = "card solo" if spans_row else "card"
     return f"""    <li class="{classes}" style="--accent: {accent}">
       <div class="thumb">{_thumb(p)}</div>
       <div class="body">
