@@ -318,6 +318,19 @@ const PAGE_HEALTH = `(() => {
         return img.complete && img.naturalWidth > 0;
       })(),
     })),
+    // The contents bar: every entry must point at a card that exists, or the
+    // bar is worse than the scrolling it replaced -- it offers a link that
+    // silently does nothing.
+    contents: [...document.querySelectorAll('.contents a')].map((a) => {
+      const href = a.getAttribute('href') ?? '';
+      const id = href.startsWith('#') ? href.slice(1) : '';
+      const target = id ? document.getElementById(id) : null;
+      return {
+        href,
+        resolves: target !== null,
+        isCard: target !== null && target.classList.contains('card'),
+      };
+    }),
     font,
   };
 })()`;
@@ -391,6 +404,15 @@ async function main() {
           problems.push(`${card.title}: meta shows no commit count (got ${JSON.stringify(commits)})`);
         }
         if (!card.imgOk) problems.push(`${card.title}: embedded card image did not load`);
+      }
+      if (health.contents.length !== EXPECTED.repos.length) {
+        problems.push(
+          `contents bar lists ${health.contents.length} entries, page has ${EXPECTED.repos.length} projects`,
+        );
+      }
+      for (const link of health.contents) {
+        if (!link.resolves) problems.push(`contents link ${link.href} points at nothing`);
+        else if (!link.isCard) problems.push(`contents link ${link.href} does not point at a card`);
       }
       if (!health.font.includes('Thaumapolis Sans')) {
         problems.push(`body font is "${health.font}"; the embedded face is not in use`);

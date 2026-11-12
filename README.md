@@ -8,7 +8,7 @@ What gets published is generated, so this repo holds a generator rather than a g
 
 ## What the page is
 
-A list of the organisation's projects in the order they were started, oldest first, each with the date range its commits span, its commit count, and a link to open it.
+A list of the organisation's projects in the order they were started, oldest first, each with the date range its commits span, its commit count, and a link to open it. Above the grid, a contents bar names every project with its kind, so the page can be navigated and summarised without scrolling it — the eight cards run to three viewports on a desktop and six on a phone, and until 2026-11-12 no link on the page went anywhere on it. The kind prefixes are dropped below 640px, where they duplicated the card label instead of summarising the set.
 
 Each card shows the project's own screenshot where it has one, and a generated SVG motif where it does not. The motif is drawn in the project's colour from what the project is — a waterline for the pond, pipes for the organ, a ridge for the tower — so a card with no screenshot still reads as a thing rather than an empty box. Three of the eight cards use a motif: two projects publish no image at all, and a third whose README shows only dark, sparse frames is better served by a motif than by a black rectangle.
 
@@ -81,6 +81,8 @@ Append its repository name to `REPOS` in `tools/generate.py` and to the clone lo
 A project needs a `# Title` line and a descriptive first paragraph in its README. A browser preview must be advertised as a `raw.githack.com/.../index.html` URL, and is fetched at build time to confirm it serves. Projects without a browser artifact — the CLI tools — are listed with a Source link and no preview, which is stated rather than hidden.
 
 To give a new project a colour and a motif, add entries to `ACCENTS` and `_KIND`; to give it a screenshot instead, add the `Front page image:` line described under [Card images](#card-images). An unlisted project still renders, with a neutral colour and a generic wave: a missing label degrades the page, it does not break the build.
+
+Give it a one-word kind in `_KIND` as well — it appears on the card, in the contents bar, and selects the wording used when the project has no browser preview, so it is worth choosing from the project's own vocabulary rather than inventing a taxonomy (`stem` is a "Bench", not an "Instrument", because its README calls it a bench of stopped flue pipes).
 
 ## Deploying
 

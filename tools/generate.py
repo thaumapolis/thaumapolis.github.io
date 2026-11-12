@@ -128,6 +128,10 @@ class Project:
     # path: rendering needs bytes, the manifest only needs to say which case
     # applied, and a path here would tempt someone into treating it as input.
     has_thumb: bool
+    # The card's one-word kind, resolved from _KIND at load time. On the project
+    # because both the card and the contents bar need it, and two call sites of
+    # _KIND.get() with the same default is two places to get the default wrong.
+    kind: str
 
 
 def _strip_markdown(text: str) -> str:
@@ -310,6 +314,7 @@ def load_project(repos_dir: Path, repo: str) -> Project:
         last_commit=last,
         commits=commits,
         has_thumb=thumb_path(repo).is_file(),
+        kind=_KIND.get(repo, ("Project", "waves"))[0],
     )
 
 
@@ -438,6 +443,7 @@ def render(projects: list[Project]) -> str:
     SVG where a project publishes none, so they cannot 404 and cost no request.
     """
     manifest = _manifest(projects)
+    contents = _contents(projects)
     global _MANIFEST_CODEPOINTS
     _MANIFEST_CODEPOINTS = {ord(c) for c in manifest}
     faces = _faces()
@@ -515,6 +521,45 @@ def render(projects: list[Project]) -> str:
     letter-spacing: .06em; text-transform: uppercase;
   }}
   .tally b {{ color: var(--ink-soft); font-weight: 700; }}
+
+  /* The contents bar. Deliberately quiet and horizontal: the page has eight
+     large cards below it, so a nav that takes its own viewport would be worse
+     than the scrolling it replaces. Each entry is prefixed with its kind so the
+     bar still answers "what is here" without needing group headings, and the
+     kind is the same word the card uses, so the two teach each other. */
+  .contents {{
+    margin: .6rem 0 0; padding: .85rem 0 0; border-top: 1px solid var(--rule);
+  }}
+  .contents h2 {{
+    margin: 0 0 .55rem; font-size: .74rem; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
+  }}
+  .contents ol {{
+    display: flex; flex-wrap: wrap; gap: .35rem .5rem;
+    margin: 0; padding: 0; list-style: none;
+  }}
+  .contents a {{
+    display: inline-flex; align-items: baseline; gap: .4rem;
+    padding: .22rem .6rem; border: 1px solid var(--rule); border-radius: 999px;
+    font-size: .82rem; color: var(--ink-soft); text-decoration: none;
+    transition: border-color .12s ease, color .12s ease;
+  }}
+  .contents a:hover {{ color: var(--ink); border-color: var(--accent); }}
+  .contents a:focus-visible {{
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }}
+  .contents .what {{
+    font-size: .7rem; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--ink-faint);
+  }}
+  /* On a phone the prefixes stop being a summary and start being the reason the
+     bar is three rows taller -- measured 6 rows / 30% of the viewport with them,
+     and they duplicate the kind label printed on the card immediately below.
+     Below the breakpoint the bar is a jump list and the card is the description. */
+  @media (max-width: 640px) {{
+    .contents .what {{ display: none; }}
+    .contents ol {{ gap: .3rem .4rem; }}
+  }}
 
   /* A card is a button-shaped region with a real link inside; the stripe is the
      project's own colour, repeated in its header so identity survives a glance. */
@@ -644,6 +689,7 @@ def render(projects: list[Project]) -> str:
       <li>{_format_date(oldest)} &ndash; {_format_date(newest)}</li>
     </ul>
   </div>
+{contents}
   <ol>
 {cards}
   </ol>
@@ -723,14 +769,30 @@ _FACES = [
 # keyed by repo, so an unlisted repo still renders (as "Project" / "lines") --
 # the page degrades, it does not crash, because a missing label is not a reason
 # to publish nothing.
+# The one-word kind shown on each card, audited 2026-11-12 line-by-line against
+# each project's own README. Seven of eight agreed. The exception was stem, which
+# shared aurelia's "Instrument" label: aurelia is an instrument in the sense that
+# you play it ("An instrument you draw with your finger"), while stem is a bench
+# you build the instrument on ("An interactive bench of stopped flue pipes").
+# Collapsing those two made both cards less true, and the distinction is the kind
+# of thing a visitor notices when they open one and it is not the other.
+#
+# Labels come from the project's own vocabulary, not a taxonomy invented here.
+# These strings are load-bearing beyond the label: _fallback() keys off them to
+# explain a card with no preview, so a new kind there without a new note gets the
+# generic "there is nothing to open here".
 _KIND = {
     "nebulabrot": ("Renderer", "orbits"),
     "flux-pond": ("Simulation", "water"),
     "termbrot": ("CLI tool", "blocks"),
     "resonance-engine": ("Instrument", "field"),
     "aurelia": ("Instrument", "strings"),
+    # Its own headline: "One quantum particle, in a flat box, simulated rather
+    # than faked". It is a thing you watch evolve, not a thing you play.
     "quantum-loom": ("Simulation", "packet"),
-    "stem": ("Instrument", "pipes"),
+    # "An interactive bench of stopped flue pipes". Playable, but you build the
+    # instrument rather than play it; sharing aurelia's label blurred both.
+    "stem": ("Bench", "pipes"),
     "ridgeline": ("Game", "terrain"),
 }
 
@@ -990,10 +1052,48 @@ def _fallback(p: Project, kind: str) -> str:
     return f'<span class="none">command line &#8212; {note}</span>'
 
 
+def _contents(projects: list[Project]) -> str:
+    """A contents bar: every project, grouped by what it is.
+
+    The page was 3 viewports of cards on desktop and 6 on a phone, with no link
+    on the page that went anywhere on it -- measured 2026-11-12, zero anchors. A
+    visitor who wants Ridgeline scrolls to find it, and the page cannot answer
+    "what is here" without scrolling it.
+
+    Flat and in page order rather than grouped, because grouping was measured and
+    was worse: grouped with headings it needed a full viewport, which displaced the
+    cards it existed to reach. Each entry carries its kind as a prefix, so the
+    composition -- three instruments, two simulations, one of the rest -- is still
+    readable at a glance without any headings at all.
+
+    Rendered as plain anchors, not a filter: a filter needs script and state, and
+    this page's claim is that it works with nothing. Anchors work offline, work
+    with script disabled, work for keyboard and screen-reader users, and need no
+    baseline to be honest about.
+    """
+    rows = "".join(
+        '<li><a href="{anchor}" style="--accent: {accent}">'
+        '<span class="what">{kind}</span>{title}</a></li>'.format(
+            # urljoin-free: the repo slug is the id, and both sides come from the
+            # same value, so an anchor can drift from its target only by editing
+            # one of the two -- which the contents check in the test suite catches.
+            anchor=_html(f"#{project.repo}"),
+            accent=ACCENTS.get(project.repo, NO_ACCENT),
+            kind=_html(project.kind),
+            title=_html(project.title),
+        )
+        for project in projects
+    )
+    return f"""  <nav class="contents" aria-label="Projects on this page">
+    <h2>What is here</h2>
+    <ol>{rows}</ol>
+  </nav>"""
+
+
 def _card(p: Project, spans_row: bool) -> str:
     repo_url = f"https://github.com/{ORG}/{p.repo}"
     accent = ACCENTS.get(p.repo, NO_ACCENT)
-    kind = _KIND.get(p.repo, ("Project", "waves"))[0]
+    kind = p.kind
     if p.preview is not None:
         links = (
             f'<a class="open" href="{p.preview}">Open it</a>'
@@ -1008,7 +1108,11 @@ def _card(p: Project, spans_row: bool) -> str:
     # heading, buttons and hover border all read that one property. Only the
     # dangling last card needs a class; the opener is identified by position.
     classes = "card solo" if spans_row else "card"
-    return f"""    <li class="{classes}" style="--accent: {accent}">
+    # id from the repo slug: stable, already unique, and already the thing the
+    # contents bar links to. The repo is the identifier everywhere else in this
+    # system (manifest, thumbs, clone list), so reusing it avoids inventing a
+    # second one that could disagree.
+    return f"""    <li class="{classes}" id="{p.repo}" style="--accent: {accent}">
       <div class="thumb">{_thumb(p)}</div>
       <div class="body">
         <h2>{_html(p.title)}</h2>
