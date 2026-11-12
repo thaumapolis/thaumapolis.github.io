@@ -67,6 +67,19 @@ jobs:
       # Surface the proof, so the evidence is readable in the log rather than
       # implied by a green tick.
       - name: Show what the offline claim check observed
-        run: |
-          cat .tmp/offline-proof.json | python3 -m json.tool
+        run: python3 -m json.tool < .tmp/offline-proof.json
         if: always()
+
+      # Only reachable when the goldens disagree, which locally they do not: the
+      # same page matches its baselines at 0.02-0.05% here. A runner-vs-container
+      # font-rasterisation gap is expected -- ridgeline's workflow says a new
+      # Firefox or FreeType release moves pixels -- but the fix is to look at the
+      # render and re-baseline deliberately, never to widen the tolerance or
+      # accept images nobody has opened. These are the images to open.
+      - name: Upload what the runner actually rendered
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: golden-actual
+          path: .tmp/golden-actual/
+          if-no-files-found: ignore
