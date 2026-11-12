@@ -33,12 +33,17 @@
           env = {
             # ESM ignores NODE_PATH, so the driver is addressed by absolute path.
             #
-            # The path is not "${pkgs.playwright-driver}/index.mjs": that package
-            # installs the library under lib/node_modules/playwright/, and its own
-            # top level has no index.mjs at all. This was verified by listing the
-            # realised output rather than by copying the expression from another
-            # project's flake, which is where the wrong shape came from.
-            PLAYWRIGHT_ENTRY = "${pkgs.playwright-driver}/lib/node_modules/playwright/index.mjs";
+            # The layout is top-level: playwright-driver realises as
+            # <store>/index.mjs, <store>/lib/, <store>/browsers.json. An earlier
+            # comment here claimed the opposite -- "its own top level has no
+            # index.mjs at all", asserting lib/node_modules/playwright/index.mjs as
+            # verified by listing the output. It was not verified, and the path it
+            # produced does not exist, so every browser phase in CI died with
+            # ERR_MODULE_NOT_FOUND while the job still deployed: pages.yml calls
+            # generate.py, not check.sh, so nothing that gates publication ever ran
+            # the goldens. The same package's shape is what ridgeline/flake.nix
+            # already uses and its CI is green.
+            PLAYWRIGHT_ENTRY = "${pkgs.playwright-driver}/index.mjs";
             PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
             # fonttools needs a brotli extension to read/write WOFF2 and does not
             # declare it, so its site-packages go on PYTHONPATH by hand. Pillow
