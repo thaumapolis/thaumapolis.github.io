@@ -93,7 +93,7 @@ report "goldens ($ENGINE)"
 if [[ ! -f .tmp/site/index.html ]]; then
   fail "no artifact to test"
 else
-  ARGS=(--engine "$ENGINE")
+  ARGS=(--engine "$ENGINE" --repos "$REPOS")
   [[ $UPDATE_GOLDENS -eq 1 ]] && ARGS+=(--update)
   "$NODE" tests/golden.test.mjs "${ARGS[@]}" || fail "golden checks"
 fi

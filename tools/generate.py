@@ -18,6 +18,7 @@ import base64
 import concurrent.futures
 import html
 import io
+import json
 import math
 import re
 import subprocess
@@ -33,9 +34,40 @@ ORG = "thaumapolis"
 # from the org API: an explicit list is what lets the build fail when one goes
 # missing, which is the failure mode worth catching.
 #
-# This is an allow-list, not an ordering. The page is ordered chronologically by
-# first commit (see _chronological), so adding a project here is the only edit
-# needed -- its position follows from its own history.
+# The one definition of "what counts as a preview link". Read by the golden
+# tests too, so they count "Open it" links against this rule rather than a copy.
+_PREVIEW_RE = re.compile(r"https://raw(?:cdn)?\.githack\.com/\S+?/index\.html")
+
+
+def parse_title(readme: str) -> str:
+    """The project's title, as its own README states it.
+
+    Split out of parse_readme so the golden tests can ask the same question of
+    the same source. Two parsers of one convention is how a test starts passing
+    against a page that disagrees with itself.
+    """
+    title_match = re.search(r"^# (.+)$", readme, re.MULTILINE)
+    if title_match is None:
+        msg = "README has no `# Title` line"
+        raise ValueError(msg)
+    return title_match.group(1).strip()
+
+
+def has_preview(readme: str) -> bool:
+    """Whether this README advertises a browser preview. See parse_title."""
+    return _PREVIEW_RE.search(readme) is not None
+
+
+# The projects, in the order the generator requires them to exist. This is an
+# allow-list, not an ordering: position on the page comes from each project's
+# own commit history (see _chronological), so adding a project here is the only
+# edit needed.
+#
+# Published as page data rather than left as a build-time detail, so that
+# tests/golden.test.mjs can read the expectations out of the rendered page
+# instead of duplicating this list in a second language. It verifies them
+# against the real READMEs, which is what stops the manifest becoming a second
+# source of truth.
 REPOS = [
     "nebulabrot",
     "flux-pond",
@@ -91,6 +123,11 @@ class Project:
     first_commit: date | None
     last_commit: date | None
     commits: int
+    # Whether a committed thumbnail exists, i.e. whether the card shows the
+    # project's own screenshot or the generated motif. A bool rather than a
+    # path: rendering needs bytes, the manifest only needs to say which case
+    # applied, and a path here would tempt someone into treating it as input.
+    has_thumb: bool
 
 
 def _strip_markdown(text: str) -> str:
@@ -143,11 +180,7 @@ def _span(first: date | None, last: date | None) -> str:
 
 def parse_readme(readme: str) -> tuple[str, str, str | None]:
     """Return (title, tagline, preview_url) from a project README."""
-    title_match = re.search(r"^# (.+)$", readme, re.MULTILINE)
-    if title_match is None:
-        msg = "README has no `# Title` line"
-        raise ValueError(msg)
-    title = title_match.group(1).strip()
+    title = parse_title(readme)
 
     body = readme.split("\n", 1)[1] if "\n" in readme else ""
     tagline: str | None = None
@@ -172,9 +205,7 @@ def parse_readme(readme: str) -> tuple[str, str, str | None]:
         msg = "README has no descriptive first paragraph"
         raise ValueError(msg)
 
-    preview_match = re.search(
-        r"https://raw(?:cdn)?\.githack\.com/\S+?/index\.html", readme
-    )
+    preview_match = _PREVIEW_RE.search(readme)
     preview = preview_match.group(0) if preview_match is not None else None
     return title, tagline, preview
 
@@ -278,6 +309,7 @@ def load_project(repos_dir: Path, repo: str) -> Project:
         first_commit=first,
         last_commit=last,
         commits=commits,
+        has_thumb=thumb_path(repo).is_file(),
     )
 
 
@@ -356,7 +388,7 @@ def _assert_glyphs(faces: list[tuple[int, str, bytes]]) -> None:
     covered: set[int] = set()
     for _, name, raw in faces:
         covered |= set(TTFont(io.BytesIO(raw)).getBestCmap())
-    used = _USED_CODEPOINTS
+    used = _USED_CODEPOINTS | _MANIFEST_CODEPOINTS
     missing = sorted(c for c in used if c not in covered)
     if missing:
         msg = "embedded faces are missing glyphs the page uses: " + " ".join(
@@ -365,14 +397,49 @@ def _assert_glyphs(faces: list[tuple[int, str, bytes]]) -> None:
         raise SystemExit(msg)
 
 
+def thumb_path(repo: str) -> Path:
+    """Where a project's committed card thumbnail lives, if it has one."""
+    return _THUMBS_DIR / f"{repo}.webp"
+
+
+def _manifest(projects: list[Project]) -> str:
+    """Machine-readable page facts, embedded so a test can hold the page to them.
+
+    A JSON script block is inert in the browser and needs no new request. The
+    alternative -- having tests hard-code the card count -- duplicates this list
+    in a second language, which is the drift this repo is built to avoid.
+
+    Expected values are derived from the checkouts, then verified against each
+    README: if the manifest disagrees with what a project actually says, the
+    test fails, so the manifest cannot quietly become a second source of truth.
+    """
+    return json.dumps(
+        {
+            "projects": [
+                {
+                    "repo": p.repo,
+                    "title": p.title,
+                    "preview": p.preview is not None,
+                    "thumb": p.has_thumb,
+                }
+                for p in projects
+            ],
+        },
+        separators=(",", ":"),
+    )
+
+
 def render(projects: list[Project]) -> str:
     """Build the whole page as one self-contained string.
 
     No script, no stylesheet request, no font request, no image request: a
     showcase for offline single-file artifacts should not itself need a network.
-    The thumbnails are inline SVG derived from each project's accent colour, so
-    they cost nothing and cannot 404.
+    Card images are data URIs cut from each project's own screenshot, or inline
+    SVG where a project publishes none, so they cannot 404 and cost no request.
     """
+    manifest = _manifest(projects)
+    global _MANIFEST_CODEPOINTS
+    _MANIFEST_CODEPOINTS = {ord(c) for c in manifest}
     faces = _faces()
     _assert_glyphs(faces)
     # Two cards span the full width, and both for the same reason: a half-width
@@ -588,6 +655,7 @@ def render(projects: list[Project]) -> str:
     HTML, rather than publishing a plausible page with a hole in it.</p>
   </footer>
 </main>
+<script type="application/json" id="page-manifest">{manifest}</script>
 </body>
 </html>
 """
@@ -622,6 +690,13 @@ _PAGE_TEXT += (
 # Codepoints, not strings: comparing a character against a set of words would
 # never match and would pass forever. This is what makes _assert_glyphs meaningful.
 _USED_CODEPOINTS = {ord(c) for c in _PAGE_TEXT}
+
+# The manifest block is JSON rendered verbatim, so project titles and repo names
+# reach the page through it rather than through _PAGE_TEXT. Titles are exactly
+# the kind of text that contains a character a subset forgot -- an accent, an
+# em dash -- so they belong in the glyph check. Populated by render(), which is
+# why the check is done here rather than by scanning _PAGE_TEXT at import time.
+_MANIFEST_CODEPOINTS: set[int] = set()
 
 _FACES_DIR = Path(__file__).resolve().parent.parent / "faces"
 # Committed card images, produced by tools/make_thumbs.py. Absent for a
@@ -887,7 +962,7 @@ def _thumb(p: Project) -> str:
     content is on display right next to the card and the page cannot be used
     without reading that text anyway.
     """
-    path = _THUMBS_DIR / f"{p.repo}.webp"
+    path = thumb_path(p.repo)
     if path.is_file():
         encoded = base64.b64encode(path.read_bytes()).decode()
         return (

@@ -36,9 +36,99 @@ const ACTUAL_DIR = join(ROOT, '.tmp', 'golden-actual');
  */
 const TOLERANCE_RATIO = 0.001;
 
-/** What the page must contain, derived from the repos it advertises. */
-const EXPECTED_CARDS = 8;
-const EXPECTED_OPEN_LINKS = 6;
+/**
+ * Content that must be present, as opposed to pixels that must be unchanged.
+ *
+ * Pixel goldens pin the page including facts that are true only today: commit
+ * counts and date ranges come from the projects' history, so a baseline goes
+ * stale the moment any project commits. That is intended for art and layout,
+ * and actively misleading for facts -- the failure looks like a rendering
+ * regression and invites someone to blindly re-accept a baseline that has
+ * stopped asserting anything.
+ *
+ * So the pixel comparison is paired with checks insensitive to history: the
+ * right number of cards, every advertised project present, and on each card a
+ * date range, a commit count, and an embedded image that actually loaded. A
+ * card that loses its dates or drops off the page fails here even when nobody
+ * has looked at a baseline in weeks.
+ *
+ * The expectations are read from the same checkouts the page was generated
+ * from, never written out here: this repo's rule is that project facts live in
+ * the projects. Pass --repos when generating from somewhere other than `..`.
+ */
+/** Matches "24 Oct 2026", "29 Oct - 30 Oct 2026", and "history unknown". */
+const META_DATE = /\d{1,2} \w{3} \d{4}|history unknown/;
+/** Matches "1 commit" and "39 commits", but not an empty span. */
+const META_COMMITS = /\b\d+ commits?\b/;
+
+/**
+ * Read the manifest the page was built with, then verify every claim in it
+ * against the project's own README.
+ *
+ * The manifest is what the generator already knows, so the test does not
+ * hard-code a card count in a second language. Verifying it against the
+ * checkouts is what stops the manifest becoming a second source of truth: if it
+ * says a project is openable and that project's README has no preview line, the
+ * test fails even though the page and the manifest agree with each other.
+ *
+ * --repos is required for the same reason the generator requires it: without
+ * the checkouts these checks would compare the page against itself.
+ */
+function expectations(reposDir) {
+  const raw = readFileSync(PAGE, 'utf8');
+  const match = raw.match(/<script type="application\/json" id="page-manifest">([\s\S]*?)<\/script>/);
+  if (match === null) {
+    die(`${PAGE} has no #page-manifest block; rebuild it with ./check.sh`);
+  }
+  const { projects } = JSON.parse(match[1]);
+  if (!Array.isArray(projects) || projects.length === 0) {
+    die('the page manifest lists no projects');
+  }
+  for (const entry of projects) {
+    const readme = join(reposDir, entry.repo, 'README.md');
+    if (!existsSync(readme)) {
+      die(
+        `--repos ${reposDir} has no ${entry.repo}/README.md; ` +
+          'the checks cannot confirm what the page claims about it',
+      );
+    }
+    const text = readFileSync(readme, 'utf8');
+    const title = readmeTitle(text);
+    if (title !== entry.title) {
+      die(
+        `manifest says ${entry.repo} is titled "${entry.title}" but its README says "${title}"`,
+      );
+    }
+    if (readmeHasPreview(text) !== entry.preview) {
+      die(
+        `manifest says ${entry.repo} preview=${entry.preview} but its README ` +
+          `says ${readmeHasPreview(text)}`,
+      );
+    }
+  }
+  return {
+    titles: projects.map((p) => p.title),
+    repos: projects.map((p) => p.repo),
+    openable: projects.filter((p) => p.preview).length,
+    thumbRepos: projects.filter((p) => p.thumb).map((p) => p.repo),
+  };
+}
+
+/**
+ * The two rules below must match tools/generate.py. They are deliberately
+ * minimal, and the assertion in expectations() is what catches drift: a rule
+ * that disagrees with the generator fails the run rather than silently
+ * rubber-stamping the page.
+ */
+function readmeTitle(text) {
+  const match = text.match(/^# (.+)$/m);
+  if (match === null) die('README has no `# Title` line');
+  return match[1].trim();
+}
+function readmeHasPreview(text) {
+  return /https:\/\/raw(cdn)?\.githack\.com\/\S+?\/index\.html/.test(text);
+}
+
 /** Full-width cards when the grid has more than one column: the opener, and the
  *  last card when it would otherwise sit alone in a row. */
 const EXPECTED_FULL_WIDTH_CARDS = 2;
@@ -75,6 +165,11 @@ if (!existsSync(PAGE)) {
 
 const argv = process.argv.slice(2);
 const UPDATE = argv.includes('--update');
+const reposIndex = argv.indexOf('--repos');
+if (reposIndex < 0) {
+  die('--repos DIR is required: the content checks read the projects the page was built from.');
+}
+const REPOS_DIR = argv[reposIndex + 1];
 const engineIndex = argv.indexOf('--engine');
 const ENGINE = engineIndex < 0 ? 'firefox' : argv[engineIndex + 1];
 if (!['firefox', 'chromium', 'webkit'].includes(ENGINE)) {
@@ -212,11 +307,23 @@ const PAGE_HEALTH = `(() => {
     fullWidth: [...document.querySelectorAll('.card')].filter(
       (c) => c.closest('ol').getBoundingClientRect().width - c.getBoundingClientRect().width < 2,
     ).length,
+    // Per card: its heading, whether both meta facts rendered, and whether its
+    // image is a real embedded picture rather than a broken src.
+    cardsInfo: [...document.querySelectorAll('.card')].map((c) => ({
+      title: c.querySelector('h2').textContent.trim(),
+      meta: [...c.querySelectorAll('.meta span')].map((s) => s.textContent.trim()),
+      imgOk: (() => {
+        const img = c.querySelector('img');
+        if (img === null) return true; // motif card, nothing to load
+        return img.complete && img.naturalWidth > 0;
+      })(),
+    })),
     font,
   };
 })()`;
 
 async function main() {
+  const EXPECTED = expectations(REPOS_DIR);
   const mod = await import(pathToFileURL(process.env.PLAYWRIGHT_ENTRY).href);
   const playwright = mod.default && mod.firefox === undefined ? mod.default : mod;
   const launcher = playwright[ENGINE];
@@ -250,10 +357,6 @@ async function main() {
       const problems = [];
       if (health.overflowX > 0) problems.push(`horizontal overflow ${health.overflowX}px`);
       if (health.clipped.length > 0) problems.push(`clipped controls: ${health.clipped.join(', ')}`);
-      if (health.cards !== EXPECTED_CARDS) problems.push(`expected ${EXPECTED_CARDS} cards, rendered ${health.cards}`);
-      if (health.opens.length !== EXPECTED_OPEN_LINKS) {
-        problems.push(`expected ${EXPECTED_OPEN_LINKS} "Open it" links, rendered ${health.opens.length}`);
-      }
       if (health.columns < 1) problems.push(`grid rendered no columns`);
       // In one column every card spans, so there is nothing to assert beyond
       // there being columns; in more, exactly the wide ones may span.
@@ -261,6 +364,31 @@ async function main() {
         problems.push(
           `expected ${EXPECTED_FULL_WIDTH_CARDS} full-width cards in a ${health.columns}-column grid, measured ${health.fullWidth}`,
         );
+      }
+      if (health.cards !== EXPECTED.titles.length) {
+        problems.push(
+          `expected ${EXPECTED.titles.length} cards, rendered ${health.cards}`,
+        );
+      }
+      if (health.opens.length !== EXPECTED.openable) {
+        problems.push(
+          `expected ${EXPECTED.openable} "Open it" links, rendered ${health.opens.length}`,
+        );
+      }
+      for (const title of EXPECTED.titles) {
+        if (!health.cardsInfo.some((c) => c.title === title)) {
+          problems.push(`no card titled "${title}" (dropped off the page)`);
+        }
+      }
+      for (const card of health.cardsInfo) {
+        const [dates, commits] = card.meta;
+        if (!META_DATE.test(dates ?? '')) {
+          problems.push(`${card.title}: meta shows no date range (got ${JSON.stringify(dates)})`);
+        }
+        if (!META_COMMITS.test(commits ?? '')) {
+          problems.push(`${card.title}: meta shows no commit count (got ${JSON.stringify(commits)})`);
+        }
+        if (!card.imgOk) problems.push(`${card.title}: embedded card image did not load`);
       }
       if (!health.font.includes('Thaumapolis Sans')) {
         problems.push(`body font is "${health.font}"; the embedded face is not in use`);
