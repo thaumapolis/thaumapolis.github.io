@@ -38,7 +38,7 @@ This is not decoration. A `system-ui` stack resolves to whatever the visitor's m
 
 ## Checking it
 
-`./check.sh --repos ..` runs lint, the build and the golden screenshots. Run it inside the pinned toolchain:
+`./check.sh --repos ..` runs lint, the card thumbnails, the build and the golden screenshots. Run it inside the pinned toolchain:
 
 ```console
 $ nix develop --command ./check.sh --repos ..
@@ -46,7 +46,9 @@ $ nix develop --command ./check.sh --repos ..
 
 Every phase runs or fails the build; a phase that cannot run is a red result, never a skip. Concretely verified to fail on: a missing baseline, a missing `PLAYWRIGHT_ENTRY`, a missing artifact, a shallow clone, and a visual change (measured 100% of pixels differing for a colour change, and card heights changing for a clipped control).
 
-The goldens exist because the generator's own assertions were not enough. Those all passed while the page was clipping buttons off the bottom of cards and stacking a layout written to be horizontal — only pixels catch that class. Each golden also asserts observable behaviour on the live page: no horizontal overflow, no card clipping its own controls, the embedded face actually in use, the expected number of cards and links.
+The goldens exist because the generator's own assertions were not enough. Those all passed while the page was clipping buttons off the bottom of cards and stacking a layout written to be horizontal — only pixels catch that class. Each golden also asserts observable behaviour on the live page: no horizontal overflow, no card clipping its own controls, the embedded face actually in use, and that every project the page claims to list is present with a date range, a commit count and a card image that loaded.
+
+Those content checks matter because the pixels alone are the wrong tool for facts. Commit counts and date ranges come from the projects' history, so a baseline goes stale the moment any project commits — the failure looks like a rendering regression and invites someone to re-accept a baseline that has stopped asserting anything. The page publishes a manifest of what it rendered; the suite reads it and verifies every claim against the project's own README, so a stale or lying manifest fails rather than being rubber-stamped. Verified to fail by mutation on: a dropped card, a blanked commit count, a corrupted embedded image, and a manifest that disagrees with a README.
 
 Baselines live per engine (`tests/golden/firefox/`) with no cross-engine fallback. **Firefox is the only engine that starts in this container**; Chromium and WebKit fail to launch. `--update` rewrites baselines and prints them for review — nothing here should accept a baseline that nobody has looked at.
 
