@@ -50,7 +50,7 @@ The goldens exist because the generator's own assertions were not enough. Those 
 
 Those content checks matter because the pixels alone are the wrong tool for facts. Commit counts and date ranges come from the projects' history, so a baseline goes stale the moment any project commits — the failure looks like a rendering regression and invites someone to re-accept a baseline that has stopped asserting anything. The page publishes a manifest of what it rendered; the suite reads it and verifies every claim against the project's own README, so a stale or lying manifest fails rather than being rubber-stamped. Verified to fail by mutation on: a dropped card, a blanked commit count, a corrupted embedded image, and a manifest that disagrees with a README.
 
-Baselines live per engine (`tests/golden/firefox/`) with no cross-engine fallback. **Firefox is the only engine that starts in this container**; Chromium and WebKit fail to launch. `--update` rewrites baselines and prints them for review — nothing here should accept a baseline that nobody has looked at.
+Baselines live per engine (`tests/golden/firefox/`) with no cross-engine fallback. **Firefox is the only engine that launches in-sandbox**; Chromium renders only under an escalation and WebKit fails either way. Cross-engine baselines are therefore possible here, at the cost of one approval per session rather than never. `--update` rewrites baselines and prints them for review — nothing here should accept a baseline that nobody has looked at.
 
 ## Card images
 

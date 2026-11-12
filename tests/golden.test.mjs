@@ -335,7 +335,9 @@ async function main() {
   } catch (error) {
     die(
       `${ENGINE} failed to launch: ${error.message}\n` +
-        'This container only starts Firefox; re-run with --engine firefox.',
+        'In this container Firefox launches in-sandbox; Chromium needs an ' +
+          'escalated run, and WebKit fails either way. Re-run with ' +
+          '--engine firefox, or with the escalation that Chromium requires.',
     );
   }
 
