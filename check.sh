@@ -98,6 +98,45 @@ else
   "$NODE" tests/golden.test.mjs "${ARGS[@]}" || fail "golden checks"
 fi
 
+# The page's central claim, demonstrated rather than asserted. Each artifact is
+# loaded in a sandboxed frame with every non-routed request aborted, and the
+# frame reports its own state: silence is a failure, because "no errors" is also
+# what a frame that never ran the artifact looks like. Two controls gate it --
+# the sandboxed frame must deny storage, and the same frame WITHOUT the sandbox
+# attribute must allow it, or a denial says nothing about the sandbox.
+report "offline claim ($ENGINE)"
+PROOF_JSON=.tmp/offline-proof.json
+PROOF_ENV=()
+if [[ -z ${PLAYWRIGHT_ENTRY:-} ]]; then
+  # Resolve the driver the same way the golden tests do, rather than assuming a
+  # path: a wrong guess here reads as "playwright is missing".
+  RESOLVED=$("$NODE" -e 'process.stdout.write(require.resolve("playwright"))' 2>/dev/null || true)
+  if [[ -z $RESOLVED ]]; then
+    fail "offline-proof (PLAYWRIGHT_ENTRY is unset and playwright is not resolvable)"
+  else
+    PROOF_ENV=(PLAYWRIGHT_ENTRY="$RESOLVED")
+  fi
+fi
+if [[ ${#PROOF_ENV[@]} -gt 0 || -n ${PLAYWRIGHT_ENTRY:-} ]]; then
+  if env ${PROOF_ENV[@]+"${PROOF_ENV[@]}"} "$NODE" tools/offline-proof.mjs \
+      --repos "$REPOS" --engine "$ENGINE" --out "$PROOF_JSON" > .tmp/offline-proof.log 2>&1; then
+    "$NODE" -e '
+      const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      if (d.verdict !== "demonstrated") { console.error("FAIL: " + d.verdict); process.exit(1); }
+      for (const p of d.projects) {
+        console.log("  " + p.repo.padEnd(17) + " canvas=" + p.canvases +
+          " painted=" + p.painted + " external requests=" + p.blockedRequests);
+      }
+      console.log("  " + d.projects.length + " artifacts in " + d.engine +
+        "; sandbox denies storage: " + d.controls.sandboxed_ok +
+        "; reachable without the sandbox: " + d.controls.unsandboxed_ok);
+    ' "$PROOF_JSON" || fail "offline-proof summary"
+  else
+    cat .tmp/offline-proof.log >&2
+    fail "offline-proof (an artifact needed the network, needed storage, or never ran)"
+  fi
+fi
+
 report "result"
 if [[ $STATUS -eq 0 ]]; then
   echo "ALL CHECKS PASSED"

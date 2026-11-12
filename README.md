@@ -22,6 +22,20 @@ Deriving rather than hand-writing is about drift. A hand-kept index restates fac
 
 The build **fails loudly** rather than publishing something plausible with a hole in it: a missing project, a README with no title or descriptive paragraph, an advertised preview link that stops serving HTML, a shallow clone, or an embedded font that is not a font.
 
+### The offline claim is demonstrated, not asserted
+
+The lede says every project is "one file that asks for nothing else — no build, no network, no storage". `tools/offline-proof.mjs` makes that an observation: each artifact that advertises a preview is loaded in a `sandbox="allow-scripts"` frame with every non-routed request aborted, and must paint a canvas, produce DOM, and report **zero** external request attempts. Which projects are covered is read from the READMEs by the same `_PREVIEW_RE` the generator uses, so the list cannot drift from what the page actually links to.
+
+The hard part was not the assertion, it was making the test capable of failing. Three things had to be true at once — the inline script must run, the frame must deny storage, and the harness must distinguish a loaded artifact from a silent one — and the first two arrangements got each of those wrong in a way that still reported success:
+
+- `page.setContent` leaves the parent on an opaque `null` origin where storage is denied **for every frame regardless of the sandbox**, so a "hostile" control there proves nothing. Both parent and artifact are therefore served from a routed `http:` origin.
+- A frame holding both `srcdoc` and `src` keeps `srcdoc` authoritative and fetches nothing from `src`.
+- An `http:` parent that sets `f.src` to a `file:` URL issues **no request at all** and reports no error, so all six projects read as "silent" with an empty explanation. This cost the most time, because it looked like the artifacts were broken.
+
+Each frame now reports its own state over `postMessage` and **silence fails the run**, since "no page errors" is also what a frame that never executed the artifact looks like. Two controls gate the verdict: the sandboxed frame must deny Web Storage, and the same frame *without* the `sandbox` attribute must allow it — without the second, a denial is not attributable to the sandbox. Verified to go red for each reason it claims to: removing the `sandbox` attribute (control collapses), and dropping the self-report (all six fail as silent rather than passing).
+
+One honest limit: the frame reports `indexedDB` as **accessible**, which matches what a `sandbox="allow-scripts"` frame really exposes. No artifact here touches it, but "no storage" means Web Storage and cookies, not literally every persistence API.
+
 ### Ordering
 
 Order comes from each project's first commit, read from its clone. The GitHub API's `created_at` is not used: it is repo creation, not when the work started, and it disagrees with the first commit on several projects — enough to reorder the page, which it does to `nebulabrot`.
@@ -44,7 +58,7 @@ This is not decoration. A `system-ui` stack resolves to whatever the visitor's m
 $ nix develop --command ./check.sh --repos ..
 ```
 
-Every phase runs or fails the build; a phase that cannot run is a red result, never a skip. Concretely verified to fail on: a missing baseline, a missing `PLAYWRIGHT_ENTRY`, a missing artifact, a shallow clone, and a visual change (measured 100% of pixels differing for a colour change, and card heights changing for a clipped control).
+Every phase runs or fails the build; a phase that cannot run is a red result, never a skip. Concretely verified to fail on: a missing baseline, a missing `PLAYWRIGHT_ENTRY`, a missing artifact, a shallow clone, and a visual change (measured 100% of pixels differing for a colour change, and card heights changing for a clipped control). The offline-claim phase is verified to fail when the `sandbox` attribute is removed and when a frame stops reporting.
 
 The goldens exist because the generator's own assertions were not enough. Those all passed while the page was clipping buttons off the bottom of cards and stacking a layout written to be horizontal — only pixels catch that class. Each golden also asserts observable behaviour on the live page: no horizontal overflow, no card clipping its own controls, the embedded face actually in use, and that every project the page claims to list is present with a date range, a commit count and a card image that loaded.
 
