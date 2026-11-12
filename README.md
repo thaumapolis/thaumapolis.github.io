@@ -100,7 +100,11 @@ Give it a one-word kind in `_KIND` as well — it appears on the card, in the co
 
 ## Deploying
 
-`.github/workflows/pages.yml` builds and publishes to Pages. It runs on push, on `workflow_dispatch`, and nightly, because the inputs live in other repositories: a project can change its README without touching this one, and the page should follow without anyone remembering.
+Two workflows, deliberately separate. `.github/workflows/pages.yml` publishes: it runs the generator and deploys. `.github/workflows/check.yml` verifies: it runs the whole of `check.sh`, including the browser phases, with `permissions: contents: read` so it cannot publish anything even if someone wanted it to.
+
+The split exists because when the offline-claim phase was added to `check.sh`, it turned out to be running **nowhere that gates publication** — `pages.yml` calls `generate.py` directly, so a check in `check.sh` was green locally and absent from CI. Making the publishing workflow also run the browser suite would either slow every deploy down or invite making a check non-fatal so deploys keep working. Red in `check.yml` blocks nothing that is live; it says a claim on the page has stopped being true.
+
+`pages.yml` builds and publishes to Pages. It runs on push, on `workflow_dispatch`, and nightly, because the inputs live in other repositories: a project can change its README without touching this one, and the page should follow without anyone remembering.
 
 Credentials come from GitHub's own per-run `GITHUB_TOKEN`, scoped to `contents: read`, `pages: write`, `id-token: write` — the minimum `actions/deploy-pages` needs. No personal access token is read, stored or logged by anything in this repository.
 

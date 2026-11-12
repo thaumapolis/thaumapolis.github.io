@@ -1,0 +1,59 @@
+# Verifies the page instead of publishing it. Separate from pages.yml on purpose:
+# that workflow's job is to deploy, and making it also run a browser suite would
+# either slow publication down or tempt someone into making a check non-fatal so
+# deploys keep working. Red here blocks nothing that is live; it just says the
+# claims on the page are no longer true.
+#
+# This exists because the offline-claim phase in check.sh was, on the commit that
+# added it, running nowhere that gates publication: pages.yml calls generate.py
+# directly, not check.sh.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only. Nothing here can publish.
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      # The same command as local development, in the same pinned toolchain, so
+      # "passing locally" and "passing in CI" are the same statement. flake.lock
+      # is committed, so this resolves the same nixpkgs revision.
+      #
+      # No --skip-link-checks: on a runner with network the preview-link fetch is
+      # the only place that proves every advertised "Open it" URL actually serves,
+      # and that is the failure worth blocking on.
+      # Cloned exactly as pages.yml clones them -- complete history, real default
+      # branch -- because check.sh runs the generator, which orders the page by
+      # each project's first commit and refuses a shallow clone.
+      - name: Clone every advertised project
+        run: |
+          set -euo pipefail
+          mkdir -p projects
+          for repo in ridgeline flux-pond aurelia stem quantum-loom resonance-engine nebulabrot termbrot; do
+            branch=$(git ls-remote --symref "https://github.com/thaumapolis/${repo}.git" HEAD | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2}')
+            git clone --branch "${branch}" "https://github.com/thaumapolis/${repo}.git" "projects/${repo}"
+            echo "${branch}" > "projects/${repo}/.default_branch"
+          done
+
+      - name: Run the acceptance checklist
+        run: nix develop --command ./check.sh --repos projects
+
+      # Surface the proof, so the evidence is readable in the log rather than
+      # implied by a green tick.
+      - name: Show what the offline claim check observed
+        run: |
+          cat .tmp/offline-proof.json | python3 -m json.tool
+        if: always()
