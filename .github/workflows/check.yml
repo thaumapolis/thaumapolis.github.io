@@ -61,6 +61,18 @@ jobs:
             echo "${branch}" > "projects/${repo}/.default_branch"
           done
 
+      # Print which nixpkgs revision and which browser build are actually being
+      # used, then the renderer's own fingerprint. Goldens have passed elsewhere
+      # in this org by luck -- a pinned revision that happened to match the
+      # machine that painted them -- and without this line a future golden
+      # disagreement is a guess rather than a lookup.
+      - name: Record the rendering environment
+        run: |
+          set -euo pipefail
+          echo "nixpkgs input: $(nix flake metadata --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["inputs"]["nixpkgs"]["locked"]["rev"])')"
+          echo "lockfile:      $(sha256sum flake.lock | cut -c1-12)"
+          nix develop --command node tools/env-probe.mjs
+
       - name: Run the acceptance checklist
         run: nix develop --command ./check.sh --repos projects
 
