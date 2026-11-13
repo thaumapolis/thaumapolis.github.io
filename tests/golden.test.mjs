@@ -275,7 +275,23 @@ const PAGE_HEALTH = `(() => {
     }
   }
   const font = getComputedStyle(document.body).fontFamily;
+  // Text metrics, so a run on a machine that cannot actually lay out text is
+  // identifiable. If the general and monospace families measure the same width,
+  // the browser has one face available and every font-family declaration is
+  // resolving to it -- which is true of this container (fc-list returns 1), where
+  // a full-page text golden therefore measures a fallback rather than the
+  // embedded face. See knowledge/environment.md.
+  const textMetrics = (() => {
+    const c = document.createElement('canvas').getContext('2d');
+    const probe = 'thaumapolis machines with real arithmetic';
+    const width = (family) => {
+      c.font = '16px ' + family;
+      return Number(c.measureText(probe).width.toFixed(3));
+    };
+    return { general: width('sans-serif'), mono: width('monospace') };
+  })();
   return {
+    textMetrics,
     overflowX,
     clipped,
     cards: document.querySelectorAll('.card').length,
@@ -417,6 +433,7 @@ async function main() {
       if (!health.font.includes('Thaumapolis Sans')) {
         problems.push(`body font is "${health.font}"; the embedded face is not in use`);
       }
+      const textIsRendered = health.textMetrics.general !== health.textMetrics.mono;
       if (problems.length > 0) {
         console.error(`FAIL ${scene.name}: ${problems.join('; ')}`);
         failures += 1;
@@ -439,6 +456,18 @@ async function main() {
         const candidate = join(ACTUAL_DIR, `${scene.name}.png`);
         console.error(`FAIL ${scene.name}: no baseline. Inspect the candidate, then accept with --update.`);
         toLookAt.push(candidate);
+        failures += 1;
+        continue;
+      }
+      if (!textIsRendered) {
+        console.error(
+          `FAIL ${scene.name}: this machine cannot render text the way a browser does -- ` +
+            `sans-serif and monospace both measure ${health.textMetrics.general}px, so only one ` +
+            `font is installed and every font-family resolves to it. A pixel comparison here is ` +
+            `a comparison against a fallback. Fix the environment (install a font set) or ` +
+            `compare on a machine that has one; do NOT re-baseline to make this pass.`,
+        );
+        toLookAt.push(shot);
         failures += 1;
         continue;
       }
