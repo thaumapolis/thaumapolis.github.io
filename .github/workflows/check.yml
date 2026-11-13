@@ -71,6 +71,10 @@ jobs:
           set -euo pipefail
           echo "nixpkgs input: $(nix flake metadata --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["inputs"]["nixpkgs"]["locked"]["rev"])')"
           echo "lockfile:      $(sha256sum flake.lock | cut -c1-12)"
+          # The probe measures the real generated page, so it needs the artifact
+          # and must run after a generate. check.sh regenerates anyway; this is
+          # only so the probe is not dependent on being ordered after it.
+          nix develop --command python3 tools/generate.py --repos projects --out .tmp/site/index.html --skip-preview-checks
           nix develop --command node tools/env-probe.mjs
 
       - name: Run the acceptance checklist
