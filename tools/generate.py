@@ -77,6 +77,7 @@ REPOS = [
     "quantum-loom",
     "stem",
     "ridgeline",
+    "saltmarsh",
 ]
 # One colour per project, keyed by repo so a rename is a visible, deliberate
 # edit rather than a hash collision. Used for the stripe, the tinted header
@@ -85,6 +86,7 @@ REPOS = [
 # distinguishable from each other at card size.
 ACCENTS = {
     "ridgeline": "#c2703e",
+    "saltmarsh": "#5fb38a",
     "flux-pond": "#2f8f9d",
     "aurelia": "#a9c47f",
     "stem": "#7fd8b8",
@@ -794,6 +796,10 @@ _KIND = {
     # instrument rather than play it; sharing aurelia's label blurred both.
     "stem": ("Bench", "pipes"),
     "ridgeline": ("Game", "terrain"),
+    # A game, but the player runs an ecosystem rather than controlling a
+    # character. "Simulation" would put it next to flux-pond and blur the fact
+    # that losing is the point here.
+    "saltmarsh": ("Game", "tide"),
 }
 
 
