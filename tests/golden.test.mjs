@@ -129,9 +129,20 @@ function readmeHasPreview(text) {
   return /https:\/\/raw(cdn)?\.githack\.com\/\S+?\/index\.html/.test(text);
 }
 
-/** Full-width cards when the grid has more than one column: the opener, and the
- *  last card when it would otherwise sit alone in a row. */
-const EXPECTED_FULL_WIDTH_CARDS = 2;
+/**
+ * Full-width cards when the grid has more than one column: the opener, and the
+ * last card when it would otherwise sit alone in a row.
+ *
+ * Derived from the project count rather than written down, because a literal
+ * here went stale the moment a ninth project was added: the page was correct
+ * and the check was wrong. This is tools/generate.py's `build_page` rule, and
+ * the same drift risk that comment names applies to both directions.
+ */
+function expectedFullWidthCards(projectCount) {
+  if (projectCount === 0) return 0;
+  const lastAlone = projectCount > 1 && (projectCount - 1) % 2 === 1;
+  return lastAlone ? 2 : 1;
+}
 
 /** The three shapes the page is designed against. Both phone orientations
  *  matter: the grid changes column count between them. */
@@ -391,9 +402,10 @@ async function main() {
       if (health.columns < 1) problems.push(`grid rendered no columns`);
       // In one column every card spans, so there is nothing to assert beyond
       // there being columns; in more, exactly the wide ones may span.
-      if (health.columns > 1 && health.fullWidth !== EXPECTED_FULL_WIDTH_CARDS) {
+      const expectedSpans = expectedFullWidthCards(EXPECTED.titles.length);
+      if (health.columns > 1 && health.fullWidth !== expectedSpans) {
         problems.push(
-          `expected ${EXPECTED_FULL_WIDTH_CARDS} full-width cards in a ${health.columns}-column grid, measured ${health.fullWidth}`,
+          `expected ${expectedSpans} full-width cards in a ${health.columns}-column grid, measured ${health.fullWidth}`,
         );
       }
       if (health.cards !== EXPECTED.titles.length) {
