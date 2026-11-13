@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p projects
-          for repo in ridgeline flux-pond aurelia stem quantum-loom resonance-engine nebulabrot termbrot; do
+          for repo in $(python3 tools/generate.py --repos . --print-repos); do
             branch=$(git ls-remote --symref "https://github.com/thaumapolis/${repo}.git" HEAD | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2}')
             git clone --branch "${branch}" "https://github.com/thaumapolis/${repo}.git" "projects/${repo}"
             echo "${branch}" > "projects/${repo}/.default_branch"

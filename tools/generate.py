@@ -297,6 +297,12 @@ def load_project(repos_dir: Path, repo: str) -> Project:
         readme = (checkout / "README.md").read_text(encoding="utf-8")
     except FileNotFoundError as error:
         msg = f"{repo}: expected README.md at {checkout / 'README.md'}"
+        if not checkout.is_dir():
+            # Distinguishes "nobody cloned this" from "this project has no
+            # README". The two need opposite fixes -- add a name to the clone
+            # list, or add a file to the project -- and the bare message read
+            # as though saltmarsh itself were broken.
+            msg += f"; {repo} is not cloned here (no such directory {checkout})"
         raise FileNotFoundError(msg) from error
     title, tagline, preview = parse_readme(readme)
     branch_file = checkout / ".default_branch"
@@ -1173,14 +1179,38 @@ def main() -> int:
         help="directory containing the project checkouts",
     )
     parser.add_argument(
-        "--out", type=Path, required=True, help="where to write index.html"
+        "--out",
+        type=Path,
+        help="where to write index.html (required unless --print-repos)",
     )
     parser.add_argument(
         "--skip-preview-checks",
         action="store_true",
         help="do not fetch preview URLs (for offline development only)",
     )
+    parser.add_argument(
+        "--print-repos",
+        action="store_true",
+        help="print the repo names this page is built from, one per line, and exit",
+    )
     args = parser.parse_args()
+
+    if not args.print_repos and args.out is None:
+        print("--out is required unless --print-repos is given", file=sys.stderr)
+        return 2
+
+    if args.print_repos:
+        if args.out is not None:
+            print("--print-repos writes nothing to a file; drop --out", file=sys.stderr)
+            return 2
+        # The workflows used to carry their own hardcoded list of repositories
+        # to clone. It drifted the first time a project was added: the generator
+        # asked for a clone nothing had made, and CI died with a FileNotFoundError
+        # that looked like a broken project rather than a missing name in a
+        # second list. REPOS is the only list; this is how CI reads it.
+        for repo in REPOS:
+            print(repo)
+        return 0
 
     projects = [load_project(args.repos, repo) for repo in REPOS]
     _require_full_history(projects)

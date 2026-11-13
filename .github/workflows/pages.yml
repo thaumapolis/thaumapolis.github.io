@@ -51,10 +51,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p projects
-          # Unordered. Order is not a workflow concern: the generator sorts by each
-          # project's own first commit, so keeping this list in some other order
-          # would be a second, competing idea about what the page looks like.
-          for repo in ridgeline flux-pond aurelia stem quantum-loom resonance-engine nebulabrot termbrot; do
+          # Derived from the generator rather than listed here. A hardcoded list
+          # drifted the first time a project was added and the deploy died looking
+          # for a clone nothing had made. Order is not a workflow concern either:
+          # the generator sorts by each project's own first commit.
+          for repo in $(python3 tools/generate.py --repos . --print-repos); do
             branch=$(git ls-remote --symref "https://github.com/thaumapolis/${repo}.git" HEAD | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2}')
             git clone --branch "${branch}" "https://github.com/thaumapolis/${repo}.git" "projects/${repo}"
             echo "${branch}" > "projects/${repo}/.default_branch"
