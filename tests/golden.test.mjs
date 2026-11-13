@@ -462,10 +462,12 @@ async function main() {
       if (!textIsRendered) {
         console.error(
           `FAIL ${scene.name}: this machine cannot render text the way a browser does -- ` +
-            `sans-serif and monospace both measure ${health.textMetrics.general}px, so only one ` +
-            `font is installed and every font-family resolves to it. A pixel comparison here is ` +
-            `a comparison against a fallback. Fix the environment (install a font set) or ` +
-            `compare on a machine that has one; do NOT re-baseline to make this pass.`,
+            `sans-serif and monospace both measure ${health.textMetrics.general}px, so fontconfig ` +
+            `sees one face and every CSS font-family resolves to it. Baselines painted like this ` +
+            `capture a fallback: observed 2026-11-13, the same page is 3487px with one font and ` +
+            `3510px with a real font set, and 3510px is what a visitor's browser shows. ` +
+            `Set FONTCONFIG_FILE to a config naming real font directories before painting or ` +
+            `comparing; do NOT re-baseline to make this pass.`,
         );
         toLookAt.push(shot);
         failures += 1;
