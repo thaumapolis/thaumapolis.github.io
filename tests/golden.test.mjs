@@ -383,6 +383,26 @@ async function main() {
 
   mkdirSync(ACTUAL_DIR, { recursive: true });
   mkdirSync(join(ROOT, 'tests', 'golden', ENGINE), { recursive: true });
+
+  // Which machine painted a baseline is part of what a baseline means, and
+  // until now nothing recorded it: --update wrote only pixels, so a baseline
+  // accepted from an unusual environment was indistinguishable afterwards from
+  // one accepted from CI. Observed: this sandbox and the CI runner disagree by
+  // ~6% of pixels on one scene, and the CI runner's own env-probe reports
+  // generic-family widths no fontconfig config on this host reproduces. A
+  // fingerprint makes that a lookup instead of a guess, and makes --update
+  // auditable after the fact.
+  const fingerprint = {
+    engine: ENGINE,
+    // Browser.version() is the engine identity; there is no page to evaluate
+    // against yet at this point in the run, and Browser has no .evaluate.
+    engineVersion: browser.version(),
+    devicePixelRatio: 1, // the contexts below do not set deviceScaleFactor
+    fontconfigFile: process.env.FONTCONFIG_FILE ?? null,
+    playwrightEntry: process.env.PLAYWRIGHT_ENTRY ?? null,
+    sceneCount: SCENES.length,
+    generatedAt: new Date().toISOString(),
+  };
   let failures = 0;
   const toLookAt = [];
 
@@ -460,7 +480,9 @@ async function main() {
 
       if (UPDATE) {
         writeFileSync(baseline, readFileSync(shot));
-        console.log(`WROTE ${scene.name} baseline (sha256 ${digest})`);
+        const meta = baseline.replace(/\.png$/, '.env.json');
+        writeFileSync(meta, JSON.stringify({ ...fingerprint, sha256: digest }, null, 2) + '\n');
+        console.log(`WROTE ${scene.name} baseline (sha256 ${digest}) from ${ENGINE} ${fingerprint.engineVersion}`);
         toLookAt.push(baseline);
         continue;
       }
