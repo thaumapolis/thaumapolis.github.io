@@ -912,11 +912,21 @@ def _motif_art(shape: str, accent: str) -> str:
         #   2. The interior must be shaded, not left blank. Dropping inside-the-set
         #      points leaves a hollow ring, which is the shape that was repeatedly
         #      mistaken for "noise".
-        #   3. All four levels must occur. Checked by histogram: 10/62/21/51 cells
-        #      across the four opacities. A linear ramp over escape time collapses
-        #      this to two levels, because escape time is heavily skewed.
+        #   3. All four levels must occur, which they do. A linear ramp over escape
+        #      time collapses this to two levels, because escape time is heavily
+        #      skewed; the sqrt mapping keeps four.
         #   4. The set must be recognisable in nine rows. Framing on a zoomed
         #      boundary makes it unrecognisable; framing on the whole set does not.
+        #
+        # Claim 4 is FALSE at the size this motif is actually shown, and was
+        # checked against the wrong thing: it holds of the 320x180 viewBox, but
+        # _motif asks for preserveAspectRatio="xMidYMid slice" and the card panel
+        # is ~581x328 (1.77), so the 1.78 viewBox is scaled to match height and
+        # cropped to ~12 of the 16 columns. At twelve columns of a nine-row
+        # Mandelbrot the silhouette is a blob. Verified by rendering the motif
+        # into a panel of the real size and looking at it -- the grid is
+        # symmetric and correctly shaded, which is exactly why reading the
+        # viewBox back as ASCII passed all four checks while the card did not.
         #
         # Escape time outside the set is a poor guide to shading it, because the
         # gradient lives only in a thin band hugging the boundary. Interior points
