@@ -62,11 +62,12 @@ THUMB_ASPECT = 2.0
 #          cropping is not a compromise but a deletion.
 FRAMING: dict[str, str] = {
     "aurelia": "letter",
-    # saltmarsh's card image is the 3D view clipped out of the page, so it is a
-    # wide, short frame (2.93:1) whose subject -- the marsh -- occupies the
-    # vertical middle. A centre crop to 2:1 therefore zooms into the marsh and
-    # cuts off the channel and both banks, which is the whole thing the card is
-    # advertising; letterboxing loses a band of empty sky top and bottom instead.
+    # saltmarsh's card image is the 3D view alone, narration suppressed, captured
+    # at 2:1 so the card is a downscale with nothing cut.
+    # Captured at exactly 2:1 (see the capture recipe in that repo's README), so
+    # letterboxing costs nothing and keeps the whole marsh; "center" would be
+    # equivalent here and would silently cut it again the next time the source's
+    # aspect drifts.
     "saltmarsh": "letter",
 }
 
