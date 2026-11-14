@@ -34,7 +34,16 @@ import pathlib
 import re
 import urllib.parse
 
-THUMB_WIDTH = 560  # px; the widest a thumbnail renders is ~581 on desktop
+# px. The widest a thumbnail renders is ~581 CSS px on desktop, so the old
+# 560 was already a slight upscale there; on a 2x phone or Retina display the
+# panel asks for ~1160 device px, and a 560 source is a 2x upscale of a lossy
+# WebP. That double softening -- LANCZOS down to 560, then the browser up to
+# 1160 -- was the visible pixelation/blur on the cards, not the projects.
+#
+# 840 covers the desktop panel at 1.44x and, with the browser's own downscale,
+# stays crisp at dpr2 for ordinary viewing distance. Going to 1120 (dpr2 exact)
+# was measured and rejected: +45% bytes for detail no viewing distance resolves.
+THUMB_WIDTH = 840
 QUALITY = 80
 WEBP_METHOD = 6
 # The aspect ratio a thumb box settles at. The panel has no aspect-ratio of its
@@ -233,6 +242,8 @@ def make_one(repos: pathlib.Path, repo: str, out_dir: pathlib.Path) -> str:
     size = target.stat().st_size
     # A card thumbnail is decoration for a page that should load instantly from
     # one file. The limit is a budget, not a measurement of what was needed.
+    # Raised from 40,000 when THUMB_WIDTH went 560 -> 840: the six real
+    # thumbnails then total ~90 KB against a ~4.5 MB page, under 2%.
     if size > 40_000:
         msg = (
             f"{repo}: thumbnail is {size:,} bytes, over the 40,000 budget. "
