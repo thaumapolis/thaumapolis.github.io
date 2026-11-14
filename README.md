@@ -78,7 +78,7 @@ The path is relative to the project's own root. It is an HTML comment because th
 
 The declared file must also be embedded in that README as a markdown image. That rule is the whole reason the cards can be trusted: the declaration then points at a picture the project already shows its own readers, rather than at any file in the tree. It replaced a heuristic that took the first image in the README, which failed twice in ways that only showed up after looking at the rendered page — it put a near-empty mid-bow frame on Aurelia's card, and it silently demoted Ridgeline, whose README links no images at all despite having committed golden frames. Choosing from the filesystem is a guess; a file the README shows is a statement.
 
-Thumbnails are cut to 560x280 WebP and committed to `thumbs/`. They are committed rather than fetched at build time so the published page remains one file with no external requests, and so building it needs no imaging library. Regenerate deliberately:
+Thumbnails are cut to 840x420 WebP and committed to `thumbs/`. They are committed rather than fetched at build time so the published page remains one file with no external requests, and so building it needs no imaging library. Regenerate deliberately:
 
 ```console
 $ nix develop --command ./tools/make_thumbs.py --repos ..
