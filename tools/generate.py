@@ -458,10 +458,11 @@ def render(projects: list[Project]) -> str:
     _assert_glyphs(faces)
     # Two cards span the full width, and both for the same reason: a half-width
     # card with nothing beside it looks broken rather than arranged. The opener
-    # spans deliberately -- it is the oldest project, so the page starts where
-    # the work started. The last card spans only when the arithmetic leaves it
-    # alone in a row: after the opener takes one, an even remainder tiles cleanly
-    # and an odd one does not.
+    # spans deliberately -- it is the most recent project, and giving the newest
+    # work the full width is both the emphasis it deserves and a visual anchor
+    # instead of nine identical tiles. The last card spans only when the
+    # arithmetic leaves it alone in a row: after the opener takes one, an even
+    # remainder tiles cleanly and an odd one does not.
     last = len(projects) - 1
     spans = {0} if projects else set()
     if last and (len(projects) - 1) % 2 == 1:
@@ -590,9 +591,9 @@ def render(projects: list[Project]) -> str:
          away from the buttons and the page stretched to almost three screens. */
       grid-auto-rows: auto;
     }}
-    /* The opener spans the row: it is the oldest project, so the page starts at
-       where the work started, and the grid gets an anchor instead of eight
-       identical tiles. */
+    /* The opener spans the row: it is the most recent project, so the newest
+       work is what catches the eye, and the grid gets an anchor instead of a
+       wall of identical tiles. */
     /* The opener is the first child, so that selector is structural rather than
        a class the markup has to remember to add. The last card carries .solo
        when the arithmetic leaves it alone in a row. */
@@ -702,7 +703,7 @@ def render(projects: list[Project]) -> str:
 {cards}
   </ol>
   <footer>
-    <p>Ordered by first commit, oldest first. This page is generated from each
+    <p>Ordered by first commit, newest first. This page is generated from each
     project&rsquo;s own README by <code>tools/generate.py</code> &mdash; no title,
     description or link is written down here, so editing a README edits the front
     page. The build fails if a project goes missing or a preview link stops serving
@@ -1158,16 +1159,29 @@ def _require_full_history(projects: list[Project]) -> None:
 
 
 def _chronological(projects: list[Project]) -> list[Project]:
-    """Oldest first, so the page reads as a timeline of the work.
+    """Newest project first, so the most recent work is what a visitor meets.
 
-    The sort is stable, so projects sharing a first date keep REPOS order rather
-    than being rearranged by the sort's internals.
+    Ordered by first_commit -- when the project appeared, not when it was last
+    touched -- and reversed. The page is still a timeline, read backwards from the
+    current end of it, which is the order that puts the thing someone is most
+    likely to want to look at above the fold. It also keeps the ordering stable
+    over a project's life: further commits to an old project do not promote it, so
+    the page does not reshuffle under a returning visitor every time a README
+    tweak lands.
+
+    The sort is stable, so projects sharing a first date keep REPOS order (reversed
+    with the rest) rather than being rearranged by the sort's internals.
 
     Projects with no readable date sort last rather than raising inside the
     comparison key. _require_full_history should already have rejected those;
     ordering must not silently depend on that call having happened first.
     """
-    return sorted(projects, key=lambda p: (p.first_commit is None, p.first_commit))
+    # Sort oldest-first then reverse, rather than reversing the key: the key's
+    # first element is the "no readable date" flag, and negating the tuple would
+    # push undated projects to the *top* of the page instead of the bottom.
+    return sorted(projects, key=lambda p: (p.first_commit is None, p.first_commit))[
+        ::-1
+    ]
 
 
 def main() -> int:
