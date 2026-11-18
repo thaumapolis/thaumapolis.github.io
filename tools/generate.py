@@ -78,6 +78,7 @@ REPOS = [
     "stem",
     "ridgeline",
     "saltmarsh",
+    "keel",
 ]
 # One colour per project, keyed by repo so a rename is a visible, deliberate
 # edit rather than a hash collision. Used for the stripe, the tinted header
@@ -94,6 +95,7 @@ ACCENTS = {
     "resonance-engine": "#d87f9c",
     "nebulabrot": "#e0b34a",
     "termbrot": "#e8b44a",
+    "keel": "#e08a4a",
 }
 NO_ACCENT = "#3d4a5a"
 # Spelled out rather than run through %b, whose abbreviation depends on the
@@ -807,6 +809,10 @@ _KIND = {
     # character. "Simulation" would put it next to flux-pond and blur the fact
     # that losing is the point here.
     "saltmarsh": ("Game", "tide"),
+    # Not a game -- no win condition. The player pushes a ship over and reads the
+    # righting-arm curve to predict whether it comes back. The verb is "inspect
+    # why it floats", so Simulation, sharing flux-pond's label deliberately.
+    "keel": ("Simulation", "water"),
 }
 
 
