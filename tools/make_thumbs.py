@@ -40,12 +40,26 @@ import urllib.parse
 # WebP. That double softening -- LANCZOS down to 560, then the browser up to
 # 1160 -- was the visible pixelation/blur on the cards, not the projects.
 #
-# 840 covers the desktop panel at 1.44x and, with the browser's own downscale,
-# stays crisp at dpr2 for ordinary viewing distance. Going to 1120 (dpr2 exact)
-# was measured and rejected: +45% bytes for detail no viewing distance resolves.
+# 840 was chosen to cover a 581 CSS px panel. That measurement no longer holds:
+# rendered at 1440 CSS wide and dpr2, the panels are 581 CSS (1162 device px) for
+# cover cards and 496 CSS (993 device px) for the two contain cards, so an 840 px
+# source is upscaled 1.38x and 1.18x -- the double resample this constant exists
+# to prevent.
 THUMB_WIDTH = 840
 QUALITY = 80
 WEBP_METHOD = 6
+
+# Resolution and composition used to be the same number, so sharpening a card
+# necessarily reframed it. They are two now:
+#
+#   CROP_WIDTH   -- how much of the source a card shows, in source px.
+#   ENCODE_WIDTH -- how many px that view is written out at.
+#
+# Pinning the window at the old 840 while encoding at the measured desktop device
+# width makes the cards sharper and moves nothing. Checked per card: with the
+# window pinned, stem/keel/flux-pond keep their exact source rectangle across
+# 840 -> 1162; with the window following the encoder, stem widened from 65.6% to
+# 90.8% of its source width and keel's hull visibly grew in the panel.
 # The aspect ratio a thumb box settles at. The panel has no aspect-ratio of its
 # own -- its height comes from the card's copy -- so this is a measured
 # observation of what the layout produces, used to crop the source close to the
@@ -55,6 +69,15 @@ WEBP_METHOD = 6
 # Observed: 581x300 on desktop (1.94), 390x180 phone portrait (2.17), 42% of a
 # wide card in phone landscape. 2.0 splits the difference.
 THUMB_ASPECT = 2.0
+
+# The crop window, in source px. Deliberately the historical value: this is the
+# composition every card has always had, and changing it must be its own review.
+CROP_WIDTH = THUMB_WIDTH
+# Widest rendered panel (581 CSS) x dpr2, i.e. the 1162 device px measured on a
+# 1440-wide desktop. Encoded 1:1 with that, narrower panels downsample in the
+# browser instead of this one upscaling 1.38x.
+ENCODE_WIDTH = 1162
+ENCODE_HEIGHT = round(ENCODE_WIDTH / THUMB_ASPECT)
 
 # repo -> vertical framing, for sources the centre crop reads badly on. Default
 # is "center". One entry per exception, each with the reason next to it; a
@@ -119,12 +142,27 @@ def _load_imaging() -> object:
 
 
 def _frame(Image: object, rgb: object, framing: str) -> object:
-    """Return `rgb` at THUMB_WIDTH x THUMB_ASPECT, without distortion.
+    """Return `rgb` at ENCODE_WIDTH x ENCODE_HEIGHT, without distortion.
 
-    Never upscales, so a small screenshot cannot be softened into blurriness.
+    Composition and resolution are deliberately separate:
+
+      * the crop window is chosen in *source* coordinates, from CROP_WIDTH, and
+      * the output is always ENCODE_WIDTH x ENCODE_HEIGHT.
+
+    They used to be the same number. `width = min(rgb.width, target_w)` sized the
+    crop window from the output width, so raising the encoded resolution also
+    widened every crop: at 840 -> 1162, stem went from showing 65.6% to 90.8% of
+    its source width and keel's hull visibly grew in the panel. So "sharpen the
+    cards" and "reframe every card" were one change, and neither could be reviewed
+    without the other. Pinning the window to CROP_WIDTH makes the resolution a
+    pure quality knob.
+
+    Never upscales past the source, so a small screenshot cannot be softened into
+    blurriness: if the selected window is smaller than the output, that window is
+    resampled up, which is a genuine upscale of source detail and is reported.
     """
-    target_w = THUMB_WIDTH
-    target_h = round(THUMB_WIDTH / THUMB_ASPECT)
+    target_w = ENCODE_WIDTH
+    target_h = ENCODE_HEIGHT
     if framing == "letter":
         scale = min(target_w / rgb.width, target_h / rgb.height)
         scaled = rgb.resize(
@@ -139,7 +177,9 @@ def _frame(Image: object, rgb: object, framing: str) -> object:
         return canvas
 
     # "center" and "top" differ only in where the window starts vertically.
-    width = min(rgb.width, target_w)  # never upscale
+    # CROP_WIDTH, not target_w: the window is what is shown, and changing the
+    # encoding must not change it.
+    width = min(rgb.width, CROP_WIDTH)
     height = round(width / THUMB_ASPECT)
     if height > rgb.height:
         height = rgb.height
@@ -283,8 +323,11 @@ def make_one(repos: pathlib.Path, repo: str, out_dir: pathlib.Path) -> str:
     size = target.stat().st_size
     # A card thumbnail is decoration for a page that should load instantly from
     # one file. The limit is a budget, not a measurement of what was needed.
-    # Raised from 40,000 when THUMB_WIDTH went 560 -> 840: the six real
-    # thumbnails then total ~90 KB against a ~4.5 MB page, under 2%.
+    # Set when THUMB_WIDTH went 560 -> 840, and re-checked at ENCODE_WIDTH 1162:
+    # all nine thumbs stay under it (largest 31,178) and total ~140 KB against a
+    # ~190 KB page, so the headroom the budget was sized for still holds. The page
+    # is roughly 24x smaller than the ~4.5 MB assumed when this was written, so
+    # this is the stricter of the two readings.
     if size > 40_000:
         msg = (
             f"{repo}: thumbnail is {size:,} bytes, over the 40,000 budget. "
