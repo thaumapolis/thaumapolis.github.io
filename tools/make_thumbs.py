@@ -152,6 +152,38 @@ def _frame(Image: object, rgb: object, framing: str) -> object:
     return cropped
 
 
+def framing_note(rgb: object, framing: str) -> str:
+    """How much of the source is *kept* and how much of the *card* is filled.
+
+    Not a gate. Cropping to the card's aspect is the design, and a 16:10
+    screenshot legitimately loses 20% of its height -- refusing that would
+    refuse every card the page has ever shown. Two numbers are reported because
+    one cannot be read: kept-area is near 0 for any large screenshot even when
+    the crop is ideal (nebulabrot's 1920x1080 keeps 17% while cutting nothing
+    that matters), and fill says nothing at all about cropping. Read together
+    they identify the one state that is always wrong -- a frame shown small and
+    surrounded by bars -- which is why the build names it and nothing else.
+
+    The defect this replaced: two cards were published with prose cut mid-word
+    ("...the spectrum ne", "is an octave") and no output on any run said so,
+    because nothing in the build had ever reported how much was being cut.
+    """
+    target_w = THUMB_WIDTH
+    target_h = round(THUMB_WIDTH / THUMB_ASPECT)
+    if framing == "letter":
+        scale = min(target_w / rgb.width, target_h / rgb.height)
+        fill = (rgb.width * scale * rgb.height * scale) / (target_w * target_h)
+        if fill < 0.6:
+            # Nothing to crop and almost nothing to show: the source should be
+            # captured at or nearer the card's aspect instead.
+            return f"letter, whole frame but only {fill * 100:.0f}% of the card (capture nearer {THUMB_ASPECT:.1f}:1)"
+        return f"letter, whole frame at {fill * 100:.0f}% of the card"
+    width = min(rgb.width, target_w)
+    height = min(rgb.height, round(width / THUMB_ASPECT))
+    kept = (width * height) / (rgb.width * rgb.height)
+    return f"{framing} crop keeps {kept * 100:.0f}% of the source"
+
+
 def readme_image(readme: str, repo: str) -> str | None:
     """The screenshot this project wants on the front page.
 
@@ -242,7 +274,10 @@ def make_one(repos: pathlib.Path, repo: str, out_dir: pathlib.Path) -> str:
         if rgb.width <= 0 or rgb.height <= 0:
             msg = f"{repo}: {source} has degenerate size {rgb.size}"
             raise SystemExit(msg)
-        rgb = _frame(Image, rgb, FRAMING.get(repo, "center"))
+        framing = FRAMING.get(repo, "center")
+        # Measured on the un-framed source, which is the frame the note is about.
+        note = framing_note(rgb, framing)
+        rgb = _frame(Image, rgb, framing)
         rgb.save(target, "WEBP", quality=QUALITY, method=WEBP_METHOD)
 
     size = target.stat().st_size
@@ -257,7 +292,7 @@ def make_one(repos: pathlib.Path, repo: str, out_dir: pathlib.Path) -> str:
             "Either the source is enormous or the encoder settings are wrong."
         )
         raise SystemExit(msg)
-    return f"{repo}: {source} -> {target.name} {size:,} B at {rgb.width}x{rgb.height}"
+    return f"{repo}: {source} -> {target.name} {size:,} B at {rgb.width}x{rgb.height} ({note})"
 
 
 def main() -> int:
