@@ -78,6 +78,12 @@ FRAMING: dict[str, str] = {
     # equivalent here and would silently cut it again the next time the source's
     # aspect drifts.
     "saltmarsh": "letter",
+    # quantum-loom's frame is a two-column app: picture on the left, a full-height
+    # column of controls and prose on the right. A centre crop at 2:1 keeps the
+    # middle of both, which puts the right-hand column's paragraphs in the frame
+    # and cuts each of them mid-word ("...the spectrum ne", "...readout b").
+    # Letterboxing keeps the whole window legible instead of quoting prose badly.
+    "quantum-loom": "letter",
 }
 
 # Sources bigger than this are refused rather than encoded. A front page is one
