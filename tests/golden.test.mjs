@@ -472,7 +472,20 @@ async function main() {
       }
 
       const shot = join(ACTUAL_DIR, `${scene.name}.png`);
+      // Record what the layout actually measures, alongside what was painted.
+      // A runner and a container have been observed to disagree on full-page
+      // height while measuring the same page height, so the two numbers have to
+      // be in the log to tell a rendering difference from a capture difference.
+      const measured = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollHeight: document.documentElement.scrollHeight,
+      }));
       await page.screenshot({ path: shot, fullPage: true });
+      const painted = decodePng(shot);
+      console.log(
+        `  ${scene.name}: measured ${measured.clientWidth}x${measured.scrollHeight} ` +
+          `(clientWidth ${measured.clientWidth}), painted ${painted.width}x${painted.height}`,
+      );
       await context.close();
 
       const baseline = join(ROOT, 'tests', 'golden', ENGINE, `${scene.name}.png`);

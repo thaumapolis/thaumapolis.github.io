@@ -51,6 +51,10 @@
             pkgs.python3
             pkgs.python3Packages.fonttools
             pkgs.python3Packages.brotli
+            # tools/check-workflows.py parses .github/workflows/*.yml. Worth the
+            # dependency: an unparseable workflow yields no jobs and no log, so the
+            # failure looks like the browser suite broke rather than the YAML.
+            pkgs.python3Packages.pyyaml
             # tools/make_thumbs.py resizes and encodes the card images. Only the
             # regeneration step needs it -- the committed .webp files are the
             # generator's input -- but it is in the shell so local and CI runs

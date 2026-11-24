@@ -56,6 +56,14 @@ for tool in python3 node; do
 done
 [[ $STATUS -ne 0 ]] && { printf '\nchecks did not run\n'; exit 1; }
 
+# A workflow that does not parse produces no jobs and no log, so the failure
+# looks like the browser suite broke rather than the YAML. Parse it here, where
+# someone is about to push it.
+report "workflows parse"
+if ! "$PYTHON" tools/check-workflows.py; then
+  fail "workflow YAML (an unparseable workflow runs nothing and logs nothing)"
+fi
+
 report "lint (ruff)"
 if [[ -z $RUFF ]]; then
   fail "ruff not found; run inside the pinned shell so the check is the same locally and in CI"
