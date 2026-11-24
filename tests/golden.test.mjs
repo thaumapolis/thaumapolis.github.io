@@ -26,7 +26,29 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import zlib from 'node:zlib';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const PAGE = resolve(ROOT, '.tmp', 'site', 'index.html');
+/**
+ * The page the pixels are compared against.
+ *
+ * This is the *pinned* render (see --pin-layout-facts in tools/generate.py),
+ * not the publishable one in .tmp/site/. The page that gets published must
+ * carry each project's real commit count and date range; the image must not,
+ * or a baseline breaks every time any project commits, which is a failure that
+ * looks like a rendering regression and invites someone to re-accept a baseline
+ * that has stopped asserting anything. The real page is still verified --
+ * generated first, by the same script, and asserted by expectations() below.
+ */
+const PAGE = resolve(ROOT, '.tmp', 'golden-page', 'index.html');
+
+/**
+ * The page that would be published, with each project's real commit count, real
+ * date range and real preview links.
+ *
+ * The content checks read this one and never the pinned image source: read
+ * PAGE and they would confirm a page against itself, since both would carry the
+ * same fabricated 888. Splitting the two files is what lets the pixels be
+ * stable while the facts stay live.
+ */
+const REAL_PAGE = resolve(ROOT, '.tmp', 'site', 'index.html');
 const ACTUAL_DIR = join(ROOT, '.tmp', 'golden-actual');
 
 /**
@@ -75,10 +97,10 @@ const META_COMMITS = /\b\d+ commits?\b/;
  * the checkouts these checks would compare the page against itself.
  */
 function expectations(reposDir) {
-  const raw = readFileSync(PAGE, 'utf8');
+  const raw = readFileSync(REAL_PAGE, 'utf8');
   const match = raw.match(/<script type="application\/json" id="page-manifest">([\s\S]*?)<\/script>/);
   if (match === null) {
-    die(`${PAGE} has no #page-manifest block; rebuild it with ./check.sh`);
+    die(`${REAL_PAGE} has no #page-manifest block; rebuild it with ./check.sh`);
   }
   const { projects } = JSON.parse(match[1]);
   if (!Array.isArray(projects) || projects.length === 0) {

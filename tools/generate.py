@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import base64
 import concurrent.futures
+import dataclasses
 import html
 import io
 import json
@@ -129,6 +130,12 @@ class Project:
     first_commit: date | None
     last_commit: date | None
     commits: int
+    # What the card prints for the project's span. Equals _span(first, last) for
+    # a real page, and exists separately from those dates because the pixel
+    # goldens need this string fixed while the masthead range and the
+    # chronological ordering must keep using the real dates. Rendering reads
+    # this; ordering, the masthead and the manifest read the dates.
+    span: str
     # Whether a committed thumbnail exists, i.e. whether the card shows the
     # project's own screenshot or the generated motif. A bool rather than a
     # path: rendering needs bytes, the manifest only needs to say which case
@@ -138,6 +145,68 @@ class Project:
     # because both the card and the contents bar need it, and two call sites of
     # _KIND.get() with the same default is two places to get the default wrong.
     kind: str
+
+
+# Per-card commit text is pinned to a fixed digit count. Two digits is what every
+# project currently has, and the count is chosen so the meta row cannot wrap.
+PINNED_COMMITS = 88
+
+# The markup that opens one card. Used to split the page into per-card blocks so
+# the pin cannot rewrite past a card boundary.
+_CARD_OPENER_RE = re.compile(r'(?=<li class="card)')
+# One card's date text: the first span inside its meta div.
+_CARD_SPAN_RE = re.compile(r'(<div class="meta">\n\s*)<span>[^<]*</span>')
+# One card's commit text. Only ever "N commits" -- "1 commit" has no trailing s
+# and would be missed; _card emits the singular only for a one-commit project,
+# and the count assertion in pin_generated_page catches that before it can pass
+# a partially pinned page.
+_CARD_COMMITS_RE = re.compile(r"<span>\d+ commits</span>")
+
+# What the card shows instead of a real date range. One date, because _span()
+# renders a single date for a same-day project and a wider "d Mon – d Mon YYYY"
+# otherwise, and width is exactly what moves pixels here.
+PINNED_CARD_SPAN = "1 Jan 2026"
+
+
+def _with_pinned_facts(project: Project) -> Project:
+    """Return the project with the two facts that move layout fixed.
+
+    The pixel goldens need a page whose geometry does not depend on the
+    repositories' state at the moment CI clones them. Observed 2026-11-24: a
+    project went from 4 to 10 commits between the runner's clone and the
+    container's checkout, and because the page prints that number, the two
+    renders of the same layout differed by 13px and every pixel row below it.
+    Nothing was wrong with the page; the baselines were asserting history.
+
+    Pinned, because both change rendered text width:
+
+    - ``span`` -> PINNED_CARD_SPAN. The card's date text; a one-day "23 Nov
+      2026" and a multi-day "1 Nov – 23 Nov 2026" are different widths, and the
+      meta row is a flex-wrap row, so width decides whether it wraps.
+    - ``commits`` -> PINNED_COMMITS, a fixed digit count, for the same reason.
+
+    Deliberately NOT pinned, because something else depends on them:
+
+    - ``first_commit``/``last_commit``: these drive the chronological ordering
+      and the masthead's "N projects ... <range>" summary. Pinning them made the
+      masthead read "1 Jan 2026 - 1 Jan 2026" and, because the masthead sums
+      ``commits`` too, "9768 commits" -- wrong numbers on a page that looks
+      authoritative. The masthead is a fact, not layout, so it stays real.
+    - ``title``, ``tagline``, ``kind``: the project's own words, which are what
+      the picture is supposed to show.
+
+    ``preview`` is NOT pinned here, and must not be. It is layout-affecting --
+    with no preview the card gains "command line -- there is nothing to open
+    here", which wraps the links row and adds 13px to the card. Observed
+    2026-11-24: the runner's clone of one project lacked a link the local
+    checkout had, and the goldens differed by exactly that. Rather than pin it
+    per project and risk inventing a page that does not exist, check.sh pins the
+    whole set by generating the pinned page from the same manifest the publishable
+    page was built from, so the two cannot disagree about which projects are
+    openable. The content checks then assert openability against the live
+    READMEs, so a preview link that really disappears still fails the run.
+    """
+    return dataclasses.replace(project, span=PINNED_CARD_SPAN, commits=PINNED_COMMITS)
 
 
 def _strip_markdown(text: str) -> str:
@@ -325,6 +394,7 @@ def load_project(repos_dir: Path, repo: str) -> Project:
         first_commit=first,
         last_commit=last,
         commits=commits,
+        span=_span(first, last),
         has_thumb=thumb_path(repo).is_file(),
         kind=_KIND.get(repo, ("Project", "waves"))[0],
     )
@@ -446,7 +516,7 @@ def _manifest(projects: list[Project]) -> str:
     )
 
 
-def render(projects: list[Project]) -> str:
+def render(projects: list[Project], *, pin_cards: bool = False) -> str:
     """Build the whole page as one self-contained string.
 
     No script, no stylesheet request, no font request, no image request: a
@@ -471,7 +541,16 @@ def render(projects: list[Project]) -> str:
     spans = {0} if projects else set()
     if last and (len(projects) - 1) % 2 == 1:
         spans.add(last)
-    cards = "\n".join(_card(p, spans_row=i in spans) for i, p in enumerate(projects))
+    # Only the cards are pinned, and only for the pixel goldens. The masthead
+    # numbers are facts a reader takes at face value -- project count, openable
+    # count, commit total, date range -- and they stay real even here. Pinning
+    # the whole project set made the masthead read "9768 commits" and
+    # "1 Jan 2026 - 1 Jan 2026", which is the same class of error as publishing
+    # a plausible page with a hole in it, just in a file nobody publishes.
+    card_projects = [_with_pinned_facts(p) for p in projects] if pin_cards else projects
+    cards = "\n".join(
+        _card(p, spans_row=i in spans) for i, p in enumerate(card_projects)
+    )
     oldest = min(p.first_commit for p in projects if p.first_commit is not None)
     newest = max(p.last_commit for p in projects if p.last_commit is not None)
     openable = sum(1 for p in projects if p.preview is not None)
@@ -1150,7 +1229,7 @@ def _card(p: Project, spans_row: bool) -> str:
         <p class="kind">{_html(kind)}</p>
         <p class="desc">{_html(p.tagline)}</p>
         <div class="meta">
-          <span>{_span(p.first_commit, p.last_commit)}</span>
+          <span>{p.span}</span>
           <span>{commits}</span>
         </div>
         <div class="links">{links}</div>
@@ -1221,6 +1300,22 @@ def main() -> int:
         help="do not fetch preview URLs (for offline development only)",
     )
     parser.add_argument(
+        "--pin-layout-facts",
+        action="store_true",
+        help="fix each card's commit count and date text so the page geometry is "
+        "reproducible (for the pixel goldens only; the content checks still read "
+        "the real values). Combine with --from-page to pin one specific already-"
+        "generated page rather than re-reading the repositories.",
+    )
+    parser.add_argument(
+        "--from-page",
+        type=Path,
+        help="instead of generating from the checkouts, read this already-generated "
+        "page and pin it. Used by check.sh so the image is pinned from the very "
+        "bytes whose facts were just verified, not from a second read of the "
+        "repositories that may have moved in between.",
+    )
+    parser.add_argument(
         "--print-repos",
         action="store_true",
         help="print the repo names this page is built from, one per line, and exit",
@@ -1242,6 +1337,24 @@ def main() -> int:
         # second list. REPOS is the only list; this is how CI reads it.
         for repo in REPOS:
             print(repo)
+        return 0
+
+    if args.from_page is not None:
+        # Pin the page that was just generated and verified, instead of reading
+        # the repositories again. Two reads means a commit landing mid-run makes
+        # the image disagree with the facts the run claimed to check.
+        if args.pin_layout_facts and args.skip_preview_checks:
+            print(
+                "--from-page with --skip-preview-checks pins a page whose links "
+                "were never verified; drop one of them",
+                file=sys.stderr,
+            )
+            return 2
+        source = args.from_page.read_text(encoding="utf-8")
+        out_page = pin_generated_page(source) if args.pin_layout_facts else source
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(out_page, encoding="utf-8")
+        print(f"wrote {args.out} (pinned from {args.from_page})")
         return 0
 
     projects = [load_project(args.repos, repo) for repo in REPOS]
@@ -1272,7 +1385,19 @@ def main() -> int:
             print(f"FAIL: {error}")
         return 1
 
-    page = render(projects)
+    page = render(projects, pin_cards=args.pin_layout_facts)
+    if args.pin_layout_facts:
+        # Say so in the file itself. A pinned page looks exactly like a real one,
+        # and the one time someone opens .tmp/golden-page/index.html to see why a
+        # golden disagrees, "1 Jan 2026, 888 commits" must not read as a bug in
+        # the page or as a fact about the projects.
+        page = page.replace(
+            "</head>",
+            "  <!-- PINNED RENDER: commit counts and date ranges are fixed by\n"
+            "       --pin-layout-facts so pixel goldens do not depend on when the\n"
+            "       projects last committed. Not the page that gets published. -->\n",
+            1,
+        )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(page, encoding="utf-8")
     playable = sum(1 for p in projects if p.preview is not None)
@@ -1282,6 +1407,51 @@ def main() -> int:
     for p in projects:
         print(f"  {p.first_commit}  {p.repo}")
     return 0
+
+
+def pin_generated_page(page: str) -> str:
+    """Rewrite a generated page's per-card commit text and date text to fixed values.
+
+    The pixel goldens need this, because a card prints its project's commit count
+    and date span, and those change whenever the project commits. Observed
+    2026-11-24: the same layout rendered 13px apart purely because one clone
+    reported 4 commits and another 10.
+
+    Works on the finished HTML rather than on the Project records, so check.sh can
+    pin the exact page it has already verified; generating twice would re-read the
+    repositories, and a commit landing in between would make the image disagree
+    with the facts the run claimed to check.
+
+    Each substitution is scoped to one card's own block. An earlier version used
+    whole-document regexes with ``count=n``, which rewrote the first n matches
+    wherever they fell and mangled markup that happened to match earlier -- so
+    the per-card count check is what makes this safe, and it only means anything
+    once the search space is one card. Masthead numbers, the manifest and every
+    other fact are left exactly as the verified page has them.
+    """
+    blocks = _CARD_OPENER_RE.split(page)
+    cards = len(blocks) - 1
+    if cards < 1:
+        msg = "pin: no cards found in the page to pin"
+        raise SystemExit(msg)
+    for index in range(1, len(blocks)):
+        block, spans = _CARD_SPAN_RE.subn(
+            lambda match: f"{match.group(1)}<span>{PINNED_CARD_SPAN}</span>",
+            blocks[index],
+            count=1,
+        )
+        block, commits = _CARD_COMMITS_RE.subn(
+            f"<span>{PINNED_COMMITS} commits</span>", block, count=1
+        )
+        if spans != 1 or commits != 1:
+            msg = (
+                f"pin: card {index} of {cards}: expected one date span and one commit "
+                f"count, rewrote {spans} and {commits}; the card markup changed, and a "
+                "partially pinned page would mix real and pinned facts"
+            )
+            raise SystemExit(msg)
+        blocks[index] = block
+    return "".join(blocks)
 
 
 if __name__ == "__main__":

@@ -97,10 +97,36 @@ fi
 # Rendering checks. A page that generated successfully is not the same as a page
 # that lays out: clipping, overflow and a silently unused @font-face all look
 # fine as bytes on disk.
+#
+# The pixels are compared against a page whose per-card commit counts and date
+# text are pinned, because both are printed inline and change rendered text
+# width. Observed 2026-11-24: one project went 4 -> 10 commits between CI's
+# clone and the checkout that painted the baselines, and the goldens then failed
+# at 100% of pixels on a page that was laid out identically. A baseline that
+# changes whenever another repository commits is asserting history, not layout.
+#
+# Pinned from .tmp/site/index.html -- the page this run just generated and
+# verified -- so which projects are openable is fixed by that verified page
+# rather than re-read from disk. openability is layout-affecting (with no
+# preview a card gains a note that wraps its links row, measured at 13px), so
+# this is the one place it must agree; the content checks in the golden tests
+# still assert it against the live READMEs, so a preview link that really
+# disappears fails the run.
+#
+# The masthead keeps the real project count, openable count, commit total and
+# date range, so the image never shows a fabricated headline number.
 report "goldens ($ENGINE)"
 if [[ ! -f .tmp/site/index.html ]]; then
   fail "no artifact to test"
 else
+  # Pin the page that was just generated and verified, rather than generating a
+  # second time. A second read of the repositories can see different facts than
+  # the first -- a project committed between the two reads is enough -- and then
+  # the image would be pinned from a page nobody checked.
+  if ! "$PYTHON" tools/generate.py --repos "$REPOS" --from-page .tmp/site/index.html \
+      --out .tmp/golden-page/index.html --pin-layout-facts; then
+    fail "pin the verified page for the goldens"
+  fi
   ARGS=(--engine "$ENGINE" --repos "$REPOS")
   [[ $UPDATE_GOLDENS -eq 1 ]] && ARGS+=(--update)
   "$NODE" tests/golden.test.mjs "${ARGS[@]}" || fail "golden checks"
