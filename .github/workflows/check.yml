@@ -76,6 +76,13 @@ jobs:
           # only so the probe is not dependent on being ordered after it.
           nix develop --command python3 tools/generate.py --repos projects --out .tmp/site/index.html --skip-preview-checks
           nix develop --command node tools/env-probe.mjs
+          # How much layout width a scrollbar reserves here. Goldens are full-page
+          # screenshots, so this number decides whether a runner and a container
+          # can paint the same page at the same height: 15px of classic scrollbar
+          # re-wraps every paragraph, 0px of overlay scrollbar does not. Record it
+          # rather than infer it -- a container that reports 0 cannot reproduce a
+          # runner-side scrollbar difference at all.
+          nix develop --command node tools/scrollbar-probe.mjs
 
       - name: Run the acceptance checklist
         run: nix develop --command ./check.sh --repos projects
