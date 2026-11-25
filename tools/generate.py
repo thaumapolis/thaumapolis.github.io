@@ -541,20 +541,37 @@ def render(projects: list[Project], *, pin_cards: bool = False) -> str:
     spans = {0} if projects else set()
     if last and (len(projects) - 1) % 2 == 1:
         spans.add(last)
-    # Only the cards are pinned, and only for the pixel goldens. The masthead
-    # numbers are facts a reader takes at face value -- project count, openable
-    # count, commit total, date range -- and they stay real even here. Pinning
-    # the whole project set made the masthead read "9768 commits" and
-    # "1 Jan 2026 - 1 Jan 2026", which is the same class of error as publishing
-    # a plausible page with a hole in it, just in a file nobody publishes.
+    # Pinning covers the card facts AND the masthead, and the reason for the
+    # second is that the masthead is a SUM of the first. Summing real commit
+    # counts while the cards showed pinned ones made the headline contradict the
+    # cards beneath it, and made the goldens move on unrelated commits.
+    #
+    # What keeps this honest rather than fabricated: ordering still comes from the
+    # real dates (see render's caller), and in a pinned run the masthead's total,
+    # per-card counts and date range all agree with each other. The publishable
+    # page pins nothing and shows real numbers everywhere.
     card_projects = [_with_pinned_facts(p) for p in projects] if pin_cards else projects
     cards = "\n".join(
         _card(p, spans_row=i in spans) for i, p in enumerate(card_projects)
     )
-    oldest = min(p.first_commit for p in projects if p.first_commit is not None)
-    newest = max(p.last_commit for p in projects if p.last_commit is not None)
-    openable = sum(1 for p in projects if p.preview is not None)
-    total_commits = sum(p.commits for p in projects)
+    # The masthead reports over the same list the cards are drawn from, so a
+    # pinned run stays internally consistent: its commit total is 88 per project,
+    # which is exactly what the cards under it say. It previously summed the REAL
+    # counts while the cards showed pinned ones, so the headline contradicted the
+    # cards, and -- worse -- it moved with every commit to any project. Observed
+    # 2026-11-25: 257 in the baseline, 259 in the next run, from two commits to
+    # an unrelated repo. The goldens then failed on the masthead, 1200px above the
+    # card that actually changed, and every commit from here would do the same.
+    oldest = min(
+        (p.first_commit for p in card_projects if p.first_commit is not None),
+        default=None,
+    )
+    newest = max(
+        (p.last_commit for p in card_projects if p.last_commit is not None),
+        default=None,
+    )
+    openable = sum(1 for p in card_projects if p.preview is not None)
+    total_commits = sum(p.commits for p in card_projects)
     return f"""<!doctype html>
 <html lang="en">
 <head>
