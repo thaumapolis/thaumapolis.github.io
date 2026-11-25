@@ -107,6 +107,13 @@ FRAMING: dict[str, str] = {
     # and cuts each of them mid-word ("...the spectrum ne", "...readout b").
     # Letterboxing keeps the whole window legible instead of quoting prose badly.
     "quantum-loom": "letter",
+    # ridgeline's card is captured taller than 2:1 on purpose (see the comment on
+    # ASPECT_MAX in that repo's tools/capture-card.mjs): the floor is 56x44, so a
+    # 2:1 canvas cannot both centre the player and keep the corridors that leave
+    # the room. A centre crop keeps the room and drops every corridor, which is
+    # the difference between "a lit box" and "a room you can leave". Letterboxing
+    # keeps the whole sight disc, corridors included, for a small side gutter.
+    "ridgeline": "letter",
 }
 
 # Sources bigger than this are refused rather than encoded. A front page is one
