@@ -166,6 +166,7 @@ _CARD_COMMITS_RE = re.compile(r"<span>\d+ commits</span>")
 # renders a single date for a same-day project and a wider "d Mon – d Mon YYYY"
 # otherwise, and width is exactly what moves pixels here.
 PINNED_CARD_SPAN = "1 Jan 2026"
+PINNED_MASTHEAD_SPAN = "1 Jan 2026 – 1 Jan 2026"
 
 
 def _with_pinned_facts(project: Project) -> Project:
@@ -1426,6 +1427,45 @@ def main() -> int:
     return 0
 
 
+_TALLY_COMMITS_RE = re.compile(r"(<li><b>)\d+(</b> commits</li>)")
+_TALLY_RANGE_RE = re.compile(
+    r"(<li>)(\d+ [A-Za-z]{3} \d{4} &ndash; \d+ [A-Za-z]{3} \d{4})(</li>)"
+)
+
+
+def _pin_masthead(page: str) -> str:
+    """Pin the masthead's commit total and date range, for the pixel goldens only.
+
+    The masthead is a sum of the per-project facts the cards already print, so it
+    drifts exactly when they do -- and it drifts for a reason that has nothing to
+    do with the layout. Observed 2026-11-25: the tally read 257 in one run and 259
+    in the next because two commits landed in an unrelated project, and all three
+    goldens failed on a row ~1200px above the only card that had changed. Pinning
+    the cards alone cannot help, because the tally is a different element.
+
+    Both substitutions are asserted on, so this fails loudly if the masthead markup
+    changes rather than quietly producing a page that mixes real and pinned facts.
+
+    ``PINNED_COMMITS`` is what makes this self-consistent rather than fabricated:
+    the tally's total is set to that value per card, so the headline always agrees
+    with the card counts a reader sees directly below it.
+    """
+    counts = len(_CARD_OPENER_RE.split(page)) - 1
+    total = PINNED_COMMITS * counts
+    page, commits = _TALLY_COMMITS_RE.subn(rf"\g<1>{total}\g<2>", page, count=1)
+    page, span = _TALLY_RANGE_RE.subn(
+        rf"\g<1>{PINNED_MASTHEAD_SPAN}\g<3>", page, count=1
+    )
+    if commits != 1 or span != 1:
+        msg = (
+            f"pin: masthead expected one commit total and one date range, rewrote "
+            f"{commits} and {span}; the tally markup changed and a partially pinned "
+            "page would mix real and pinned facts"
+        )
+        raise SystemExit(msg)
+    return page
+
+
 def pin_generated_page(page: str) -> str:
     """Rewrite a generated page's per-card commit text and date text to fixed values.
 
@@ -1446,6 +1486,7 @@ def pin_generated_page(page: str) -> str:
     once the search space is one card. Masthead numbers, the manifest and every
     other fact are left exactly as the verified page has them.
     """
+    page = _pin_masthead(page)
     blocks = _CARD_OPENER_RE.split(page)
     cards = len(blocks) - 1
     if cards < 1:
