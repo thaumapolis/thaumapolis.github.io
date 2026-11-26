@@ -114,6 +114,11 @@ FRAMING: dict[str, str] = {
     # the difference between "a lit box" and "a room you can leave". Letterboxing
     # keeps the whole sight disc, corridors included, for a small side gutter.
     "ridgeline": "letter",
+    # pressure-well's whole subject is the grid *and* the scope trace under it. A
+    # centre crop at 2:1 lands on the upper, empty half of the grid and drops the
+    # scope entirely -- the one part that shows what the synth computed. Letterbox
+    # so the card reads as the instrument it is, controls and trace included.
+    "pressure-well": "letter",
 }
 
 # Sources bigger than this are refused rather than encoded. A front page is one

@@ -81,6 +81,7 @@ REPOS = [
     "saltmarsh",
     "keel",
     "hoar",
+    "pressure-well",
 ]
 # One colour per project, keyed by repo so a rename is a visible, deliberate
 # edit rather than a hash collision. Used for the stripe, the tinted header
@@ -99,6 +100,7 @@ ACCENTS = {
     "termbrot": "#e8b44a",
     "keel": "#e08a4a",
     "hoar": "#8fb3d9",
+    "pressure-well": "#b98fe0",
 }
 NO_ACCENT = "#3d4a5a"
 # Spelled out rather than run through %b, whose abbreviation depends on the
