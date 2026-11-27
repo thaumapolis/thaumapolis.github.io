@@ -119,6 +119,11 @@ FRAMING: dict[str, str] = {
     # scope entirely -- the one part that shows what the synth computed. Letterbox
     # so the card reads as the instrument it is, controls and trace included.
     "pressure-well": "letter",
+    # harmonic-loom's card is captured at exactly 2:1, so a centre crop and letterboxing
+    # are equivalent today -- but letterboxing states the intent, and if the capture's
+    # aspect ever drifts it will letterbox rather than silently cut the spectrum off the
+    # bottom, which is the one element that shows where the energy went.
+    "harmonic-loom": "letter",
 }
 
 # Sources bigger than this are refused rather than encoded. A front page is one
